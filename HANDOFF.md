@@ -26,7 +26,8 @@ here. Gathered challenge context (rules, rubric, Discord answers, sources): `../
 | Full-corpus Jev knockout (still refers without texts on ruling questions) | `src/knockout.py` | off |
 | API (FastAPI, SSE, proxy secret) | `api/app.py` → https://isnad-api.vercel.app | **live** |
 | Web (Next.js 16, shadcn RTL, white Saudi dialect) | `web/` → https://isnad-app.vercel.app | **live** |
-| Behaviour tests (12 cases) | `eval/smoke.py` | **12/12 local and production** |
+| Search by subject ("ايه عن النوم"): kind words, light10 stemming, per-text relevance | `src/search.py`, `src/cascade.py` | **fixed 2026-10-06, live** |
+| Behaviour tests (14 cases) | `eval/smoke.py` | **14/14 local and production** |
 
 ## 3. Run, test, deploy
 
@@ -81,7 +82,13 @@ Machine has 9 GB RAM: never run two embedding jobs at once.
   overlap median 85%; labelled hit@1 ONNX 7/13 vs PyTorch-CPU 6/13; hit@120 13/13 vs 12/13.
 - Memory (`eval/measure_memory.py`, all 9 languages): PyTorch 2.0 GB, ONNX 1.6 GB; Arabic ready
   10 s → 1.8 s locally; on Vercel `ready_seconds` 3.6–4.1.
-- Production (`eval/smoke.py`, from Riyadh to Vercel iad1): 12/12, median 1.1 s, max 3.4 s.
+- Production (`eval/smoke.py`, from Riyadh to Vercel iad1): 14/14, median 1.2 s; 7-9 s on a
+  cold instance (right after a deploy, or after idle minutes).
+- Search by subject (`eval/topic_recall.py`, 10 topic queries, 45 known answers): answers
+  reaching topic mode 15 -> 27; labelled single-text queries 13/13 inside Jev's 120.
+- Relevance judging (`eval/relevance_probe.py`): text inside each question, "same sense"
+  wording, bar 0.75; right texts 0.80+. Request classifier (`eval/ask_probe.py`): 0/36 wrong.
+- Trace one query without Jev: `python eval/explain.py "<query>" --expect quran:2:255`.
   First search after idle through the web ≈ 8 s (both functions start cold); warm ≈ 1 s.
 - Vercel Hobby CLI refuses any single file over 100 MB (per file, not total; measured).
 - TypeSafe limits (Omar's org): 80 requests/s, 100,000 input tokens/s.
@@ -108,6 +115,8 @@ Machine has 9 GB RAM: never run two embedding jobs at once.
 
 - Fast mode misses some well-known hadith on broad topics (decision 3).
 - Jev's topic and ruling lists vary a little between runs (same query, different 8th text).
+- Subject search still misses some verses whose wording differs from the query (for sleep:
+  39:42 "منامها", 8:11 "النعاس", 6:60): dense search ranks short unrelated verses above them.
 - Some matns still hold the chain (e.g. Tirmidhi 887); Muslim 6640 shows apart from 6638.
 - Knockout mode still answers ruling questions with a referral only.
 - Grader names for four Sunan translations are "Unknown" in the source metadata.

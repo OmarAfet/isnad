@@ -17,6 +17,10 @@ for i, a in enumerate(sys.argv):
     if a == "--api":
         API = sys.argv[i + 1]
 WAIT = int(sys.argv[sys.argv.index("--wait") + 1]) if "--wait" in sys.argv else 120
+# Full-corpus mode reads every text: ~40 s alone, longer when searches share the organisation's
+# token limit (a topic query ran 108 s beside a browser search). The first run used 60 s and
+# failed a query the app had answered correctly.
+TIMEOUT = int(sys.argv[sys.argv.index("--timeout") + 1]) if "--timeout" in sys.argv else 300
 
 # (query, allowed verdicts, words the chosen text must contain, extra check)
 CASES = [
@@ -40,7 +44,7 @@ def call(q):
     req = urllib.request.Request(f"{API}/api/search", data=json.dumps({"q": q}).encode(),
                                  headers={"Content-Type": "application/json"})
     t = time.time()
-    with urllib.request.urlopen(req, timeout=60) as r:
+    with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
         return json.load(r), (time.time() - t) * 1000
 
 

@@ -20,6 +20,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -28,6 +29,7 @@ sys.path.insert(0, os.path.join(ROOT, "src"))
 sys.path.insert(0, os.path.join(ROOT, "scripts"))
 
 import cascade                    # noqa: E402
+import knockout                   # noqa: E402
 from decide import load_key       # noqa: E402
 from search import Isnad          # noqa: E402
 
@@ -37,6 +39,12 @@ CACHE_SIZE = 512                  # judges will try the same examples; answer th
 RATE_LIMIT = 30                   # requests per IP per minute; the Jev key is real money
 ALTERNATIVES = 3
 ALT_MIN_PROB = 0.05
+
+# The team lead's choice: Jev reads every text ("knockout"). "net" keeps the earlier design, a
+# 120-text shortlist from search, as a fallback switch.
+MODE = os.environ.get("ISNAD_MODE", "knockout")
+CACHE_VERSION = "2026-10-05.knockout-1"   # bump when behaviour changes, so stale answers die
+CACHE_FILE = os.path.join(ROOT, "data", "cache", f"answers-{MODE}.json")
 
 STATE = {}
 
@@ -48,14 +56,29 @@ async def lifespan(app):
     from typesafe_sdk import AsyncTypeSafeClient
     t0 = time.time()
     ix = Isnad()
-    ix.lang_index("ar")
-    ix.embed_query("تهيئة")      # load the model now, not on the first user's request
+    if MODE != "knockout":
+        # Only the shortlist mode searches. In knockout mode Jev reads the Arabic of every text
+        # directly - measured to match English descriptions too - so the embedding model, its
+        # matrices and PyTorch are never touched, and a small host can run the service.
+        ix.lang_index("ar")
+        ix.embed_query("تهيئة")  # load the model now, not on the first user's request
     STATE["ix"] = ix
     STATE["lock"] = threading.Lock()
     STATE["jev"] = AsyncTypeSafeClient()
     STATE["translators"] = json.load(
         open(os.path.join(ROOT, "data", "translators.json"), encoding="utf-8"))
     STATE["cache"] = OrderedDict()
+    STATE["corpus"] = knockout.Corpus(ix) if MODE == "knockout" else None
+    # One pacer for the whole process: concurrent searches share the organisation's token limit.
+    STATE["pacer"] = knockout.Pacer()
+    # A full read costs ~3.5M tokens, so answers persist across restarts and deploys.
+    try:
+        saved = json.load(open(CACHE_FILE, encoding="utf-8"))
+        if saved.get("version") == CACHE_VERSION:
+            for k, v in saved.get("answers", {}).items():
+                STATE["cache"][k] = v
+    except Exception:
+        pass
     STATE["hits"] = defaultdict(deque)
     STATE["ready_s"] = round(time.time() - t0, 1)
     yield
@@ -145,7 +168,10 @@ async def health():
     return {"ok": ix is not None, "records": len(ix.recs) if ix else 0,
             "languages": sorted(ix.meta.get("languages", {})) if ix else [],
             "model": ix.meta.get("model") if ix else None,
-            "decision_model": cascade.MODEL, "ready_seconds": STATE.get("ready_s")}
+            "decision_model": cascade.MODEL, "mode": MODE,
+            "texts_jev_reads": len(STATE["corpus"].items) if STATE.get("corpus") else cascade.NET,
+            "cached_answers": len(STATE.get("cache") or {}),
+            "ready_seconds": STATE.get("ready_s")}
 
 
 @app.post("/api/search")
@@ -164,6 +190,30 @@ async def search(body: SearchIn, request: Request):
         hit["cached"] = True
         return hit
 
+    return await _answer(q)
+
+
+
+def _save_cache():
+    try:
+        os.makedirs(os.path.dirname(CACHE_FILE), exist_ok=True)
+        tmp = CACHE_FILE + ".tmp"
+        json.dump({"version": CACHE_VERSION, "answers": dict(STATE["cache"])},
+                  open(tmp, "w", encoding="utf-8"), ensure_ascii=False)
+        os.replace(tmp, CACHE_FILE)
+    except Exception:
+        pass
+
+
+async def _answer(q, progress=None):
+    """Run the decision for one query and shape the response. Shared by both endpoints."""
+    cache = STATE["cache"]
+    if q in cache:
+        cache.move_to_end(q)
+        hit = dict(cache[q])
+        hit["cached"] = True
+        return hit
+
     ix = STATE["ix"]
     t0 = time.time()
 
@@ -172,30 +222,39 @@ async def search(body: SearchIn, request: Request):
         with STATE["lock"]:
             return ix.search(q, k=cascade.NET)
 
-    cands = await asyncio.to_thread(_run_search)
-    t_search = (time.time() - t0) * 1000
-    lang = cands[0]["query_language"] if cands else None
-
-    t1 = time.time()
     try:
-        d = await cascade.run(q, cands, client=STATE["jev"])
-    except Exception as e:  # the decision service is down or refused the request
-        # Do not hand over a text without a decision. Show the search results as exactly what
-        # they are: unconfirmed candidates.
+        if MODE == "knockout":
+            # No shortlist: Jev reads every text. Search is only used to detect the language
+            # for the translation shown beside the answer.
+            from _lang import detect
+            lang = detect(q)
+            t_search = 0.0
+            t1 = time.time()
+            d = await knockout.run(q, ix, STATE["corpus"], STATE["jev"], STATE["pacer"],
+                                   progress=progress)
+            cands = d.pop("_candidates", []) if isinstance(d, dict) else []
+        else:
+            cands = await asyncio.to_thread(_run_search)
+            t_search = (time.time() - t0) * 1000
+            lang = cands[0]["query_language"] if cands else None
+            t1 = time.time()
+            d = await cascade.run(q, cands, client=STATE["jev"])
+    except Exception as e:
+        # Do not hand over a text without a decision.
         return {
-            "query": q, "query_language": lang, "verdict": "decision_unavailable",
-            "confidence": None, "specific_enough": None, "result": None,
-            "alternatives": [_shape(c, lang) for c in cands[:ALTERNATIVES]],
-            "error": type(e).__name__,
-            "timing_ms": {"search": round(t_search), "decide": None,
+            "query": q, "query_language": None, "verdict": "decision_unavailable",
+            "confidence": None, "specific_enough": None, "result": None, "alternatives": [],
+            "topic": [], "error": type(e).__name__,
+            "timing_ms": {"search": None, "decide": None,
                           "total": round((time.time() - t0) * 1000)},
         }
     t_decide = (time.time() - t1) * 1000
 
     by_id = {c["id"]: c for c in cands}
+    if d.get("record"):
+        by_id.setdefault(d["record"]["id"], d["record"])
     chosen = d["record"]["id"] if d["record"] else None
     family = set(d.get("family") or [])
-    # Copies merged into the chosen report are not "other texts"; they join its variants.
     alts = sorted(((rid, p) for rid, p in (d.get("probabilities") or {}).items()
                    if rid != chosen and rid not in family and rid in by_id
                    and p >= ALT_MIN_PROB),
@@ -205,10 +264,13 @@ async def search(body: SearchIn, request: Request):
         d["record"]["variants"] = list(d["record"].get("variants") or []) + [
             {"id": rid, "ref": by_id[rid]["ref"], "grade": by_id[rid].get("grade")}
             for rid in family if rid in by_id and rid not in seen]
+    if d.get("record") is not None:
+        d["record"]["matched_language"] = lang
 
     out = {
         "query": q,
         "query_language": lang,
+        "mode": MODE,
         "verdict": d["verdict"],
         "confidence": round(d["confidence"], 3) if d["confidence"] is not None else None,
         "specific_enough": round(d["specific_enough"], 3),
@@ -216,17 +278,55 @@ async def search(body: SearchIn, request: Request):
         "result": _shape(d["record"], lang),
         "alternatives": [dict(_shape(by_id[rid], lang), probability=round(p, 3))
                          for rid, p in alts],
-        # Topic mode: the description names a subject, so every relevant text is listed with its
-        # source and ruling, sound texts first, and the reader chooses.
         "topic": [dict(_shape(t["record"], lang), relevance=round(t["relevance"], 3))
                   for t in (d.get("topic") or [])],
-        "jev": {"rounds": d["jev_rounds"], "net": d["net"], "groups": d["groups"],
-                "confidence": d.get("jev_confidence"), "merged_copies": len(family)},
-        "timing_ms": {"search": round(t_search), "decide": round(t_decide),
-                      "total": round((time.time() - t0) * 1000)},
+        "jev": {"rounds": d["jev_rounds"], "texts_read": d.get("texts_read", d["net"]),
+                "groups": d["groups"], "confidence": d.get("jev_confidence"),
+                "merged_copies": len(family)},
+        "timing_ms": {"search": round(t_search) if t_search else None,
+                      "decide": round(t_decide), "total": round((time.time() - t0) * 1000)},
         "cached": False,
     }
     cache[q] = out
     if len(cache) > CACHE_SIZE:
         cache.popitem(last=False)
+    _save_cache()
     return out
+
+
+@app.post("/api/search/stream")
+async def search_stream(body: SearchIn, request: Request):
+    """Same answer as /api/search, as Server-Sent Events: progress while Jev reads every text,
+    then the result. A ~40 second read is only acceptable if the reader can see it working."""
+    q = " ".join(body.q.split())
+    ip = (request.headers.get("x-forwarded-for") or request.client.host).split(",")[0].strip()
+    if _limited(ip):
+        raise HTTPException(429, "rate limited")
+
+    queue: asyncio.Queue = asyncio.Queue()
+    total = len(STATE["corpus"].items) if STATE.get("corpus") else 0
+
+    def progress(stage, done, n_groups):
+        texts = min(total, done * knockout.GROUP) if stage == "round1" else total
+        queue.put_nowait({"type": "progress", "stage": stage, "done": done, "of": n_groups,
+                          "texts_read": texts, "texts_total": total})
+
+    async def worker():
+        try:
+            res = await _answer(q, progress=progress)
+            await queue.put({"type": "result", "data": res})
+        except Exception as e:  # pragma: no cover
+            await queue.put({"type": "error", "error": type(e).__name__})
+
+    async def events():
+        task = asyncio.create_task(worker())
+        yield f"data: {json.dumps({'type': 'start', 'texts_total': total})}\n\n"
+        while True:
+            ev = await queue.get()
+            yield f"data: {json.dumps(ev, ensure_ascii=False)}\n\n"
+            if ev["type"] in ("result", "error"):
+                break
+        await task
+
+    return StreamingResponse(events(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})

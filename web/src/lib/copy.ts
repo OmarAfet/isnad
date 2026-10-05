@@ -17,6 +17,10 @@ export const copy = {
     hint: "اكتب بأي لغة وبأي صياغة",
     submit: "دوّر على النص",
     submitting: "ندوّر على النص",
+    // Shown while every text is read; the count is the reason the wait is worth it.
+    reading: "نقرأ كل النصوص",
+    of: "من",
+    comparing: "نقارن أقرب النصوص",
     tryLabel: "جرّب",
     tooShort: "اكتب كلمتين على الأقل",
   },

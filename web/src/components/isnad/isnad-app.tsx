@@ -21,9 +21,11 @@ const EXAMPLES = [
   "the hadith about the five pillars of Islam",
 ];
 
+type Progress = { stage: string; read: number; total: number };
+
 type State =
   | { status: "idle" }
-  | { status: "loading"; q: string }
+  | { status: "loading"; q: string; progress?: Progress }
   | { status: "done"; data: SearchResponse }
   | { status: "error"; message: string };
 
@@ -38,26 +40,76 @@ export function IsnadApp() {
   const run = useCallback(async (q: string) => {
     ran.current = q;
     setState({ status: "loading", q });
-    try {
-      const res = await fetch("/api/search", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ q }),
-      });
-      if (res.status === 429) return setState({ status: "error", message: copy.errors.rate });
-      if (!res.ok) {
-        return setState({
-          status: "error",
-          message: res.status === 502 ? copy.errors.network : copy.errors.generic,
-        });
-      }
-      const data = (await res.json()) as SearchResponse;
+
+    const finish = (data: SearchResponse) => {
       setState({ status: "done", data });
       requestAnimationFrame(() =>
         results.current?.scrollIntoView({ behavior: "smooth", block: "start" }),
       );
+    };
+    const fail = (status: number) =>
+      setState({
+        status: "error",
+        message:
+          status === 429
+            ? copy.errors.rate
+            : status === 502
+              ? copy.errors.network
+              : copy.errors.generic,
+      });
+
+    // Stream first: Jev reads every text, and the reader sees the count rise. The plain endpoint
+    // is the fallback if anything between here and the API does not pass a stream through.
+    try {
+      const res = await fetch("/api/search/stream", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ q }),
+      });
+      if (!res.ok || !res.body) {
+        if (res.status === 429 || res.status === 422) return fail(res.status);
+        throw new Error("no stream");
+      }
+      const reader = res.body.getReader();
+      const dec = new TextDecoder();
+      let buf = "";
+      let total = 0;
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buf += dec.decode(value, { stream: true });
+        let cut: number;
+        while ((cut = buf.indexOf("\n\n")) !== -1) {
+          const chunk = buf.slice(0, cut);
+          buf = buf.slice(cut + 2);
+          const line = chunk.split("\n").find((l) => l.startsWith("data: "));
+          if (!line) continue;
+          const ev = JSON.parse(line.slice(6));
+          if (ev.type === "start") total = ev.texts_total ?? 0;
+          if (ev.type === "progress") {
+            setState({
+              status: "loading",
+              q,
+              progress: { stage: ev.stage, read: ev.texts_read ?? 0, total: ev.texts_total ?? total },
+            });
+          }
+          if (ev.type === "result") return finish(ev.data as SearchResponse);
+          if (ev.type === "error") return fail(500);
+        }
+      }
+      throw new Error("stream ended without a result");
     } catch {
-      setState({ status: "error", message: copy.errors.network });
+      try {
+        const res = await fetch("/api/search", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ q }),
+        });
+        if (!res.ok) return fail(res.status);
+        finish((await res.json()) as SearchResponse);
+      } catch {
+        setState({ status: "error", message: copy.errors.network });
+      }
     }
   }, []);
 
@@ -85,7 +137,7 @@ export function IsnadApp() {
       />
 
       <div ref={results} aria-live="polite" className="scroll-mt-8">
-        {state.status === "loading" && <LoadingChain q={state.q} />}
+        {state.status === "loading" && <LoadingChain q={state.q} progress={state.progress} />}
         {state.status === "error" && (
           <Alert variant="destructive">
             <AlertCircle className="size-4" />
@@ -98,8 +150,35 @@ export function IsnadApp() {
   );
 }
 
-function LoadingChain({ q }: { q: string }) {
+function ReadingProgress({ progress }: { progress?: Progress }) {
+  if (!progress || !progress.total) return null;
+  const reading = progress.stage === "round1";
+  const pct = reading ? Math.min(100, Math.round((progress.read / progress.total) * 100)) : 100;
+  const fmt = (n: number) => n.toLocaleString("en-US");
   return (
+    <div className="mb-8 space-y-2" role="status">
+      <div className="flex items-baseline justify-between gap-3 text-sm">
+        <span className="font-medium">{reading ? copy.search.reading : copy.search.comparing}</span>
+        {reading && (
+          <bdi className="tabular-nums text-muted-foreground">
+            {fmt(progress.read)} {copy.search.of} {fmt(progress.total)}
+          </bdi>
+        )}
+      </div>
+      <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+        <div
+          className="h-full rounded-full bg-primary transition-[width] duration-500"
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+    </div>
+  );
+}
+
+function LoadingChain({ q, progress }: { q: string; progress?: Progress }) {
+  return (
+    <>
+    <ReadingProgress progress={progress} />
     <ol className="relative" aria-busy="true" aria-label={copy.search.submitting}>
       <li className="relative ps-8 pb-7">
         <span aria-hidden className="absolute start-[0.4375rem] top-4 bottom-0 w-px bg-chain" />
@@ -118,5 +197,6 @@ function LoadingChain({ q }: { q: string }) {
         </li>
       ))}
     </ol>
+    </>
   );
 }

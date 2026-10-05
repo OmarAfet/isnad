@@ -62,6 +62,19 @@ export const copy = {
     unavailable: "خدمة التحقق متوقفة الحين. هذي نتائج بحث ما تأكدنا منها.",
   },
 
+  // A ruling question: the texts on the matter, then a referral. Wording approved by Omar in the
+  // preview he chose (2026-10-05); see COPY.md, "Ruling questions".
+  ruling: {
+    general: "النصوص الواردة في المسألة:",
+    personal: "سؤالك عن حالتك أنت، والحكم فيها يحتاج عالم يسمع تفاصيلها.",
+    personalTexts: "هذي النصوص العامة الواردة في المسألة:",
+    none: "ما لقينا نصوص عن هذي المسألة في مصادر إسناد.",
+    noFatwa: "إسناد ما يفتي.",
+    detail: "للحكم بالتفصيل:",
+    fiqh: "الموسوعة الفقهية (الدرر السنية)",
+    ask: "اسأل أهل العلم أو جهة إفتاء معتمدة.",
+  },
+
   grade: {
     quran: "قرآن كريم",
     daif: "العلماء ضعّفوه، فلا تنسبه للنبي ﷺ على أنه ثابت عنه.",

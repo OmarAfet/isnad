@@ -40,6 +40,35 @@ export function ResultView({
     </Link>
   );
 
+  // A ruling question gets the texts on the matter and a referral, never a ruling: Reference
+  // Framework level (د), "يوضح المعلومات العامة ويحيل إلى جهة مؤهلة".
+  if (verdict === "ruling") {
+    const personal = data.ruling?.kind === "personal";
+    const texts = data.topic ?? [];
+    return (
+      <div className="space-y-5">
+        <Chain>
+          {description}
+          <Terminal
+            icon={<Scale className="size-5" />}
+            text={personal ? copy.ruling.personal : texts.length ? copy.ruling.general : copy.ruling.none}
+            sub={personal && texts.length ? copy.ruling.personalTexts : undefined}
+          />
+        </Chain>
+        {texts.length > 0 && (
+          <ul className="space-y-3">
+            {texts.map((t) => (
+              <li key={t.id}>
+                <TopicCard record={t} onPick={onPick} />
+              </li>
+            ))}
+          </ul>
+        )}
+        <Referral url={data.ruling?.fiqh_url} />
+      </div>
+    );
+  }
+
   if (verdict === "fatwa_request") {
     return (
       <Chain>
@@ -368,6 +397,29 @@ function Alternatives({ items }: { items: TextRecord[] }) {
         ))}
       </ul>
     </section>
+  );
+}
+
+function Referral({ url }: { url?: string | null }) {
+  return (
+    <aside className="space-y-2 rounded-lg border bg-card p-4">
+      <p className="flex items-center gap-2 text-lg font-medium">
+        <Scale className="size-5 text-muted-foreground" />
+        {copy.ruling.noFatwa}
+      </p>
+      <p className="text-muted-foreground">{copy.ruling.detail}</p>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+        {url && (
+          <Button variant="outline" size="sm" asChild>
+            <a href={url} target="_blank" rel="noopener noreferrer">
+              <ExternalLink className="size-4" />
+              {copy.ruling.fiqh}
+            </a>
+          </Button>
+        )}
+        <span>{copy.ruling.ask}</span>
+      </div>
+    </aside>
   );
 }
 

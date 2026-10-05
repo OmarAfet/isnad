@@ -6,8 +6,16 @@ export type Verdict =
   | "unsure"
   | "no_match"
   | "topic"
-  | "fatwa_request"
+  | "ruling"
+  | "fatwa_request"   // knockout mode only: a referral with no texts (session-1 behaviour)
   | "decision_unavailable";
+
+// A question about a ruling. Isnad answers it with the texts on the matter and a referral, never
+// with a ruling of its own. "personal": the asker's own case (Reference Framework level د).
+export interface RulingInfo {
+  kind: "general" | "personal";
+  fiqh_url: string;
+}
 
 export type Severity = "sahih" | "hasan" | "daif" | "mawdu" | "unknown" | "quran";
 
@@ -63,6 +71,7 @@ export interface SearchResponse {
   result: TextRecord | null;
   alternatives: TextRecord[];
   topic?: TextRecord[];
+  ruling?: RulingInfo | null;
   jev?: { rounds: number; net: number; groups: number };
   timing_ms: { search: number; decide: number | null; total: number };
   cached?: boolean;

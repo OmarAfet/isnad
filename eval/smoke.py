@@ -43,7 +43,13 @@ CASES = [
     ("حديث إن الفقيه أشد على الشيطان من ألف عابد", {"confident"}, ["فقيه", "عابد"],
      "severity=mawdu"),
     ("the hadith about the five pillars of Islam", {"confident", "tentative"}, ["خمس"], None),
-    ("هل يجوز لي الجمع بين الصلاتين في السفر؟", {"fatwa_request"}, None, None),
+    # Ruling questions: the texts on the matter and a referral, never a ruling and never silence.
+    # A personal case is Reference Framework level (د); asking a hadith's GRADE is not a ruling
+    # question at all, it is Isnad's core job.
+    ("هل يجوز لي الجمع بين الصلاتين في السفر؟", {"ruling"}, None, "ruling=personal"),
+    ("ماحكم الزنا", {"ruling"}, None, "ruling=general;topic>=1"),
+    ("ما حكم حديث إن الفقيه أشد على الشيطان من ألف عابد", {"confident", "tentative"},
+     ["فقيه", "عابد"], "severity=mawdu"),
     ("حديث عن اختراع الطائرة والسفر إلى القمر", {"no_match", "topic"}, None, "topic==0"),
 ]
 
@@ -93,7 +99,11 @@ def main():
                 why.append(f"text lacks {miss}")
         elif words and not r:
             why.append("no text returned")
-        if extra:
+        for extra in (extra or "").split(";"):
+            if not extra:
+                continue
+            if extra.startswith("ruling=") and (d.get("ruling") or {}).get("kind") != extra[7:]:
+                why.append(f"ruling kind {(d.get('ruling') or {}).get('kind')} != {extra[7:]}")
             if extra.startswith("id=") and r.get("id") != extra[3:]:
                 why.append(f"id {r.get('id')} != {extra[3:]}")
             if extra.startswith("severity=") and r.get("severity") != extra[9:]:

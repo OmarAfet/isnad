@@ -31,6 +31,7 @@ sys.path.insert(0, os.path.join(HERE, "..", "scripts"))
 
 from decide import HIGH, LOW, NO_MATCH, load_key, message_ar   # noqa: E402
 from _arabic import normalize                                   # noqa: E402
+from _dorar import fiqh_url                                     # noqa: E402
 
 # Family merge at decision time. Search already collapses near-identical copies of a report, but
 # its threshold is strict on purpose, because collapsing two DIFFERENT hadiths would hide one.
@@ -84,7 +85,40 @@ FATWA_INSTRUCTIONS = (
     "whether something is permitted or forbidden for them, rather than trying to find the wording "
     "or source of a specific Qur'anic verse or hadith?"
 )
-FATWA_THRESHOLD = 0.60
+FATWA_THRESHOLD = 0.60     # FATWA_* now serve knockout mode only, which still refers and stops
+
+# WHAT IS ASKED. Session 1 met every question about a ruling with a referral and no text:
+# "ماحكم الزنا" got "سؤالك يحتاج فتوى" and nothing else, though Al-Isra 32 speaks to it and the
+# Reference Framework puts such texts at level (أ), "answered directly, with the source". The
+# framework separates three requests, and so does Isnad now:
+#   find_text       the core job: a verse or hadith, its wording, its source or its GRADE ("ما حكم
+#                   حديث" asks for a grading, which Isnad relays from named scholars)
+#   general_ruling  the ruling on a matter in general: the texts on it, then a referral to the
+#                   approved fiqh reference (dorar.net/feqhia) and to scholars
+#   personal_case   level (د), the asker's own case: "يوضح المعلومات العامة ويحيل إلى جهة مؤهلة",
+#                   the same general texts with the referral first
+# In none of them does Isnad state a ruling. It selects texts; every word shown is a source's.
+ASK_INSTRUCTIONS = "What is this person asking Isnad for?"
+ASK_OPTIONS = {
+    "find_text": (
+        "To find a specific Qur'anic verse or hadith, its exact wording, its source or its "
+        "authenticity grading (for example 'ما صحة حديث' or 'ما حكم حديث ...'), or the texts on "
+        "a subject."),
+    "general_ruling": (
+        "The Islamic ruling on a matter in general: whether something is permitted, forbidden or "
+        "obligatory, asked about people in general rather than the asker's own situation."),
+    "personal_case": (
+        "A ruling on the asker's own situation or circumstances, for example 'is it permitted for "
+        "me', 'my marriage', 'in my country', so that the answer depends on the facts of their "
+        "case."),
+}
+RULING_THRESHOLD = 0.60    # P(general_ruling) + P(personal_case)
+RULING_RELEVANCE_INSTRUCTIONS = (
+    "The user in `description` asks about the Islamic ruling on a matter. Does the text at "
+    "`texts[{i}].text` address that matter itself, for example by commanding it, forbidding it, "
+    "warning against it, praising it, or setting out its consequence? Answer yes only if the "
+    "text addresses the matter, not if it merely shares a word with it."
+)
 
 # TOPIC MODE. "حديث عن الكذب" names a subject, not a text: there are dozens of hadiths about
 # lying. Isnad used to answer it with "no matching text in the approved sources", which is false -
@@ -173,7 +207,7 @@ async def run(query, candidates, client=None, net=NET, group=GROUP):
         questions[f"g{gi}"] = Choice(instructions=PICK_INSTRUCTIONS, criteria=crit)
         keymaps[f"g{gi}"] = km
     questions["specific_enough"] = Noul(instructions=SPECIFIC_INSTRUCTIONS)
-    questions["fatwa_request"] = Noul(instructions=FATWA_INSTRUCTIONS)
+    questions["ask"] = Choice(instructions=ASK_INSTRUCTIONS, criteria=ASK_OPTIONS)
 
     own = client is None
     client = client or AsyncTypeSafeClient()
@@ -189,14 +223,14 @@ async def run(query, candidates, client=None, net=NET, group=GROUP):
             finalists.append((rec, float(a.confidence),
                               float((a.probabilities or {}).get(a.choice, 0.0))))
         specific = float(r1.answers["specific_enough"].noul)
-        fatwa = float(r1.answers["fatwa_request"].noul)
+        ask = {k: float(v) for k, v in (r1.answers["ask"].probabilities or {}).items()}
 
         rounds = 1
-        if fatwa >= FATWA_THRESHOLD:
-            r = _result("fatwa_request", None, fatwa, None, specific, rounds, len(cands),
-                        len(groups))
-            r["fatwa_request"] = fatwa
-            return r
+        p_ruling = ask.get("general_ruling", 0.0) + ask.get("personal_case", 0.0)
+        if p_ruling >= RULING_THRESHOLD:
+            kind = ("personal" if ask.get("personal_case", 0.0) >= ask.get("general_ruling", 0.0)
+                    else "general")
+            return await _ruling(client, query, cands, kind, p_ruling, specific, len(groups))
         # A broad description goes to topic mode even when every group answered no_match: the
         # pick question asks for ONE text, and for "حديث عن الكذب" no single text is the one, so
         # all ten groups can rightly decline. Exiting here reported "nothing found" for a subject
@@ -271,6 +305,29 @@ async def run(query, candidates, client=None, net=NET, group=GROUP):
             await client.close()
 
 
+async def _ruling(client, query, cands, kind, p, specific, n_groups):
+    """A ruling question: the texts that address the matter, sound before weak, and a referral.
+    Never a ruling: the reader gets the sources' words and where to ask."""
+    from typesafe_sdk import Noul
+    pool = _topic_pool(cands)
+    relevant = []
+    if pool:
+        state = {"description": query,
+                 "texts": [{"kind": "Qur'an verse" if c.get("kind") == "ayah" else "hadith",
+                            "text": (c.get("matn") or "")[:MAX_CAND_CHARS]} for c in pool]}
+        questions = {f"t{i}": Noul(instructions=RULING_RELEVANCE_INSTRUCTIONS.format(i=i))
+                     for i in range(len(pool))}
+        r = await client.system_one(state=state, questions=questions, model=MODEL)
+        scored = [(c, float(r.answers[f"t{i}"].noul)) for i, c in enumerate(pool)]
+        relevant = _dedupe([(c, s) for c, s in scored if s >= TOPIC_MIN_REL])
+        relevant.sort(key=lambda cs: (_GRADE_ORDER.get(cs[0].get("severity") or "unknown", 1),
+                                      -cs[1]))
+    out = _result("ruling", None, None, None, specific, 2 if pool else 1, len(cands), n_groups)
+    out["topic"] = [{"record": c, "relevance": s} for c, s in relevant[:TOPIC_MAX]]
+    out["ruling"] = {"kind": kind, "probability": round(p, 3), "fiqh_url": fiqh_url(query)}
+    return out
+
+
 def _result(verdict, record, conf, prob, specific, rounds, net, groups, probabilities=None):
     return {
         "verdict": verdict,
@@ -282,6 +339,7 @@ def _result(verdict, record, conf, prob, specific, rounds, net, groups, probabil
         "message_ar": message_ar(verdict, record, specific),
         "jev_rounds": rounds,
         "fatwa_request": None,
+        "ruling": None,
         "jev_confidence": None,
         "family": [],
         "topic": [],

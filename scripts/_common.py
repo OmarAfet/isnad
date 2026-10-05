@@ -7,6 +7,13 @@ RAW = os.path.join(ROOT, "data", "raw")
 CORPUS = os.path.join(ROOT, "data", "corpus")
 
 CDN = "https://cdn.jsdelivr.net/gh/fawazahmed0"
+# jsDelivr starts answering 403 after a few dozen requests in quick succession. These mirror the
+# same repositories, so a blocked or timed-out file is retried elsewhere rather than failing the
+# build.
+CDN_MIRRORS = [
+    "https://cdn.statically.io/gh/fawazahmed0",
+    "https://raw.githubusercontent.com/fawazahmed0",
+]
 
 # Six collections. Bukhari and Muslim carry no per-hadith grade because inclusion in a Sahih
 # collection IS the grading; the four Sunan carry explicit named-muhaddith rulings.
@@ -29,6 +36,58 @@ HADITH_BOOKS = {
 QURAN_EDITION = "ara-quranuthmanihaf"
 QURAN_MATCH_EDITION = "ara-quransimple"
 
+# ---------------------------------------------------------------------------
+# Translations as a MATCHING SURFACE ONLY.
+#
+# Isnad never translates scripture itself. The Reference Framework requires a translation to
+# preserve the legal sense of its terms, and the binding output standard forbids presenting
+# generated text as scripture - machine-translating a hadith would be generating it, which is the
+# one thing this product refuses to do.
+#
+# So published translations are indexed so that a non-Arabic description can FIND the right
+# record, and the answer shown is always the Arabic original, with the translation displayed
+# beneath it and credited to its translator. The choice of translation therefore affects recall,
+# never the correctness of the answer.
+#
+# Quran: Indonesian is the King Fahd Complex's own translation, and English is Hilali & Muhsin
+# Khan, the Complex's Noble Qur'an - both named by the framework ("طبعة مجمع الملك فهد أو ترجماته").
+# The rest are established published translations, used for matching and attributed on display.
+QURAN_TRANSLATIONS = {
+    "en": "eng-muhammadtaqiudd",     # Hilali & Muhsin Khan, the Noble Qur'an (King Fahd Complex)
+    "id": "ind-kingfahdcomplex",     # King Fahd Complex
+    "ur": "urd-abulaalamaududi",     # Abul A'la Maududi
+    "tr": "tur-abdulbakigolpin",     # Abdulbaki Golpinarli
+    "bn": "ben-abubakrzakaria",      # Abu Bakr Zakaria
+    "fr": "fra-islamicfoundati",     # Islamic Foundation
+    "ru": "rus-abuadel",             # Abu Adel
+    "ta": "tam-abdulhameedbaqa",     # Abdulhameed Baqavi
+}
+
+# Hadith translation prefixes. Coverage is uneven and that is recorded rather than smoothed over:
+# French lacks Tirmidhi, Russian has only three collections, Tamil only two. A record with no
+# translation in a language simply has no surface in that language.
+HADITH_LANG_PREFIX = {
+    "en": "eng", "bn": "ben", "fr": "fra", "id": "ind",
+    "ru": "rus", "ta": "tam", "tr": "tur", "ur": "urd",
+}
+HADITH_LANG_COVERAGE = {
+    "en": ["bukhari", "muslim", "abudawud", "tirmidhi", "nasai", "ibnmajah"],
+    "bn": ["bukhari", "muslim", "abudawud", "tirmidhi", "nasai", "ibnmajah"],
+    "id": ["bukhari", "muslim", "abudawud", "tirmidhi", "nasai", "ibnmajah"],
+    "tr": ["bukhari", "muslim", "abudawud", "tirmidhi", "nasai", "ibnmajah"],
+    "ur": ["bukhari", "muslim", "abudawud", "tirmidhi", "nasai", "ibnmajah"],
+    "fr": ["bukhari", "muslim", "abudawud", "nasai", "ibnmajah"],
+    "ru": ["bukhari", "muslim", "abudawud"],
+    "ta": ["bukhari", "muslim"],
+}
+LANGS = list(HADITH_LANG_PREFIX)
+
+LANG_NAME_AR = {
+    "ar": "العربية", "en": "الإنجليزية", "ur": "الأردية", "tr": "التركية",
+    "id": "الإندونيسية", "bn": "البنغالية", "fr": "الفرنسية", "ru": "الروسية",
+    "ta": "التاميلية",
+}
+
 
 def say(msg):
     print(msg, flush=True)
@@ -49,7 +108,18 @@ def _ssl_context():
         return None
 
 
-def fetch(url, dest, retries=3):
+def mirror_urls(url):
+    """The same path on each mirror. raw.githubusercontent needs the branch in place of @1."""
+    out = []
+    for m in CDN_MIRRORS:
+        u = url.replace(CDN, m)
+        if "raw.githubusercontent" in m:
+            u = u.replace("@1/", "/1/")
+        out.append(u)
+    return out
+
+
+def fetch(url, dest, retries=3, required=True):
     if os.path.exists(dest) and os.path.getsize(dest) > 1000:
         say(f"  cached  {os.path.basename(dest)} ({os.path.getsize(dest)/1e6:.1f} MB)")
         return dest
@@ -74,12 +144,23 @@ def fetch(url, dest, retries=3):
             time.sleep(2 * (i + 1))
 
     # Fallback: curl carries the OS trust store, so it works where the Python build does not.
-    cmd = ["curl", "-sSL", "--fail", "--max-time", "180", "-o", dest, url]
-    say(f"  urllib failed ({type(last).__name__}); falling back to curl")
-    ran(" ".join(cmd))
-    subprocess.run(cmd, check=True)
-    say(f"  fetched {os.path.basename(dest)} ({os.path.getsize(dest)/1e6:.1f} MB) via curl")
-    return dest
+    # Then the mirrors, for files jsDelivr is rate-limiting.
+    for attempt_url in [url] + mirror_urls(url):
+        cmd = ["curl", "-sSL", "--fail", "--max-time", "120", "-o", dest, attempt_url]
+        r = subprocess.run(cmd, capture_output=True)
+        if r.returncode == 0 and os.path.exists(dest) and os.path.getsize(dest) > 1000:
+            host = attempt_url.split("/")[2]
+            say(f"  fetched {os.path.basename(dest)} "
+                f"({os.path.getsize(dest)/1e6:.1f} MB) via curl @ {host}")
+            return dest
+        if os.path.exists(dest):
+            os.remove(dest)
+
+    if required:
+        raise RuntimeError(f"could not fetch {url} from any mirror (last urllib error: {last})")
+    say(f"  MISSING {os.path.basename(dest)} - not available from any mirror; "
+        f"this language keeps no surface for it")
+    return None
 
 
 def load(path):

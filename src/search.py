@@ -1,19 +1,22 @@
-"""Isnad retrieval: hybrid dense + lexical search over the verified corpus.
+"""Isnad stage one: hybrid dense + lexical search across language surfaces.
 
-Isnad SELECTS a text. It never writes one. Everything this module returns is a record that exists
-in the corpus, carrying its own reference and the ruling of a named scholar.
+Isnad SELECTS a text. It never writes one. Every result is a record that exists in the corpus,
+carrying its own reference and the ruling of a named scholar.
 
-Why hybrid, measured rather than assumed (eval/retrieval_eval.py):
-    dense only   hit@1 4/11
-    lexical only hit@1 4/11
-    hybrid       hit@1 8/11
-Each half covers the other's blind spot. Dense finds a paraphrase that shares no words with the
+HYBRID, measured rather than assumed (eval/fusion_sweep.py, full index):
+    dense only   hit@1 3/13      lexical only hit@1 4/13      hybrid 7/13
+Each half covers the other's blind spot. Dense finds a paraphrase that shares no word with the
 text; lexical finds the half-remembered quotation that dense flattens into a cloud of similar
-sentences. Fusing is a weighted sum over min-max normalized scores, not reciprocal rank fusion:
-RRF was tried first and demoted a correct dense rank-1 to rank 7 when the lexical ranking had
-nothing useful to say about that query.
+sentences. Fusion is z-score weighted 0.70/0.30 - chosen over min-max and RRF, which both scored
+worse. z-score asks "how unusual is this score for this corpus", which survives the fact that
+e5's cosines all sit in a narrow high band.
+
+MANY LANGUAGES, ONE ANSWER. A description in Urdu is matched against the Urdu surface of each
+record and still answers with the Arabic, because the Arabic is the text and the translation is
+only a way of finding it. Stage one is tuned for RECALL, not for first place: Jev decides which
+candidate is right, and it can only choose from what this hands it.
 """
-import json, math, os, sys
+import json, math, os, sqlite3, sys
 from collections import Counter, defaultdict
 
 import numpy as np
@@ -21,37 +24,38 @@ import numpy as np
 HERE = os.path.dirname(os.path.abspath(__file__))
 INDEX = os.path.join(HERE, "..", "data", "index")
 sys.path.insert(0, os.path.join(HERE, "..", "scripts"))
-from _arabic import normalize, plain          # noqa: E402
+from _arabic import plain                     # noqa: E402
 from _dorar import verify_url                 # noqa: E402
+from _lang import detect                      # noqa: E402
+from _surfaces import surface_text            # noqa: E402
 
-# Fusion chosen by eval/fusion_sweep.py over the full index, not by preference:
-#   z-score        dense 0.70 / lex 0.30   hit@1 7/13   MRR 0.616   <- selected
-#   global min-max dense 0.70 / lex 0.30   hit@1 6/13   MRR 0.579
-#   pool min-max   dense 0.50 / lex 0.50   hit@1 6/13   MRR 0.560
-#   RRF                                    hit@1 4/13   MRR 0.449
-#   dense only                             hit@1 3/13   MRR 0.322
-#   lexical only                           hit@1 4/13   MRR 0.382
-# z-score asks "how unusual is this score for this corpus", which survives the fact that e5's
-# cosines all sit in a narrow high band. Min-max inside the candidate pool rescales that band to
-# fill 0..1 and turns its noise into confident-looking separation.
 DENSE_W = 0.70
 LEX_W = 0.30
-CANDIDATES = 400      # per retriever, before fusion
+CANDIDATES = 400          # per retriever per language, before fusion
 
-# The user usually says which kind of text they want. Honouring that is free accuracy: a query
-# containing "الآية" asking for 2:255 was losing to a hadith that quotes 2:255.
-# Cues are written in normalized form, because that is what normalize() produces: ة folds to ه
-# and آ to ا, so "آية" arrives as "ايه" and "سورة" as "سوره".
+# The user usually says which kind of text they want, and honouring it is free accuracy: a query
+# containing "الآية" was losing 2:255 to a hadith that quotes 2:255.
 AYAH_CUES = {"ايه", "الايه", "ايات", "الايات", "سوره", "قران", "القران", "مصحف",
              "verse", "verses", "ayah", "ayat", "quran", "quranic", "surah", "surat"}
 HADITH_CUES = {"حديث", "الحديث", "احاديث", "الاحاديث", "سنه", "السنه", "نبوي", "روي", "اخرج",
-               "hadith", "hadeeth", "sunnah", "narration", "narrated", "prophet"}
-KIND_BOOST = 0.10     # added when the record matches the stated kind, subtracted when it clashes
+               "hadith", "hadeeth", "hadis", "hadits", "sunnah", "narration", "narrated",
+               "prophet"}
+KIND_BOOST = 0.10
+
+# Variant collapsing. The same report sits in several collections - "إنما الأعمال بالنيات" occupies
+# seven places here - and handing all seven to a Choice splits the probability mass between them.
+# Measured: the correct hadith was selected with confidence 0.22 because six near-identical twins
+# were competing with it. The more copies of the right answer existed, the less certain the system
+# claimed to be, which is the opposite of what a calibrated number should do.
+#
+# So variants are collapsed to one representative, which also means the shortlist holds that many
+# more DISTINCT texts. The collapsed ids are kept and shown: "ورد أيضًا في..." is useful to a
+# reader checking a citation, and it is what distinguishing what the sources support looks like.
+VARIANT_CONTAINMENT = 0.80
+VARIANT_MIN_TOKENS = 6
 
 
 class Bm25:
-    """Okapi BM25 over normalized Arabic tokens."""
-
     def __init__(self, docs, k1=1.5, b=0.75):
         self.k1, self.b = k1, b
         toks = [d.split() for d in docs]
@@ -65,9 +69,9 @@ class Bm25:
         self.idf = {w: math.log(1 + (self.N - len(p) + 0.5) / (len(p) + 0.5))
                     for w, p in self.post.items()}
 
-    def score(self, query_norm):
+    def score(self, q):
         s = np.zeros(self.N, dtype=np.float32)
-        for w in set(query_norm.split()):
+        for w in set(q.split()):
             p = self.post.get(w)
             if not p:
                 continue
@@ -78,20 +82,13 @@ class Bm25:
         return s
 
 
-def _minmax(x):
-    lo, hi = float(x.min()), float(x.max())
-    return (x - lo) / (hi - lo) if hi > lo else np.zeros_like(x)
-
-
 def _zscore(x):
     m, sd = float(x.mean()), float(x.std())
     return (x - m) / sd if sd > 0 else np.zeros_like(x)
 
 
-def wanted_kind(query_norm):
-    """Which kind of text the query asks for, or None if it does not say."""
-    toks = set(query_norm.split())
-    a, h = toks & AYAH_CUES, toks & HADITH_CUES
+def wanted_kind(q_tokens):
+    a, h = q_tokens & AYAH_CUES, q_tokens & HADITH_CUES
     if a and not h:
         return "ayah"
     if h and not a:
@@ -99,18 +96,33 @@ def wanted_kind(query_norm):
     return None
 
 
+def _match_tokens(ix, rec_index):
+    """Tokens of a record's Arabic surface, for variant detection. Cached on first use."""
+    cache = ix._tok_cache
+    if rec_index in cache:
+        return cache[rec_index]
+    idx = ix.lang_index("ar")
+    pos = ix._ar_pos.get(rec_index)
+    toks = set(idx["bm25_docs"][pos].split()) if pos is not None else set()
+    cache[rec_index] = toks
+    return toks
+
+
 class Isnad:
-    def __init__(self, index_dir=INDEX, model=None, device=None):
+    def __init__(self, index_dir=INDEX, device=None):
+        self.dir = index_dir
         self.meta = json.load(open(os.path.join(index_dir, "meta.json"), encoding="utf-8"))
-        self.E = np.load(os.path.join(index_dir, "embeddings.f16.npy"), mmap_mode="r")
         with open(os.path.join(index_dir, "records.jsonl"), encoding="utf-8") as f:
             self.recs = [json.loads(l) for l in f]
-        if len(self.recs) != self.E.shape[0]:
-            raise SystemExit(f"index mismatch: {len(self.recs)} records vs {self.E.shape[0]} rows")
-        self.bm25 = Bm25([r["match_text"] for r in self.recs])
-        self._model = model
+        self.db = sqlite3.connect(os.path.join(index_dir, "display.db"), check_same_thread=False)
+        self.db.row_factory = sqlite3.Row
+        self._lang = {}          # lang -> {"E","rows","bm25"}; built on first use
+        self._tok_cache = {}
+        self._ar_pos = {}        # record index -> row position in the Arabic surface
+        self._model = None
         self._device = device
 
+    # -- lazily loaded pieces: a free tier should hold Arabic plus whatever was just asked for --
     @property
     def model(self):
         if self._model is None:
@@ -120,58 +132,105 @@ class Isnad:
             self._model = SentenceTransformer(self.meta["model"], device=dev)
         return self._model
 
+    def lang_index(self, lg):
+        if lg in self._lang:
+            return self._lang[lg]
+        emb = os.path.join(self.dir, f"emb_{lg}.f16.npy")
+        if not os.path.exists(emb):
+            return None
+        E = np.load(emb, mmap_mode="r")
+        rows = np.load(os.path.join(self.dir, f"rows_{lg}.npy"))
+        docs = []
+        with open(os.path.join(self.dir, f"surface_{lg}.jsonl"), encoding="utf-8") as f:
+            for line in f:
+                docs.append(json.loads(line)["t"])
+        self._lang[lg] = {"E": E, "rows": rows, "bm25": Bm25(docs), "bm25_docs": docs}
+        if lg == "ar":
+            self._ar_pos = {int(r): p for p, r in enumerate(rows)}
+        return self._lang[lg]
+
     def embed_query(self, q):
         v = self.model.encode([self.meta["query_prefix"] + q], normalize_embeddings=True,
                               convert_to_numpy=True)[0]
         return v.astype(np.float32)
 
-    def search(self, query, k=10, dense_w=DENSE_W, lex_w=LEX_W):
-        """Return the k best candidates, each with the scores that produced it.
+    def display(self, rec_id):
+        row = self.db.execute("SELECT * FROM display WHERE id=?", (rec_id,)).fetchone()
+        if row is None:
+            return {}
+        return {"text": row["text"], "matn": row["matn"], "sanad": row["sanad"],
+                "graders": json.loads(row["graders"] or "[]"),
+                "translations": json.loads(row["translations"] or "{}")}
 
-        The per-retriever scores are returned alongside the fused one because the decision layer
-        above needs them: a result that both halves agree on is a different kind of answer from
-        one only lexical overlap liked, and the user is owed that distinction.
-        """
-        qn = normalize(query)
+    def search(self, query, k=12, dense_w=DENSE_W, lex_w=LEX_W):
+        lang = detect(query)
+        langs = ["ar"] if lang == "ar" else ["ar", lang]
         qv = self.embed_query(query)
-        dense = self.E.astype(np.float32) @ qv
-        lex = self.bm25.score(qn)
 
-        # Fuse inside a candidate pool, not across all 40,389 rows. Global min-max is set by the
-        # single best and single worst score in the corpus, which flattens every real candidate
-        # into the same narrow band and lets one retriever's noise outvote the other's signal.
-        n = len(dense)
-        d_top = np.argpartition(-dense, min(CANDIDATES, n - 1))[:CANDIDATES]
-        nz = np.nonzero(lex)[0]
-        l_top = nz[np.argsort(-lex[nz])[:CANDIDATES]] if nz.size else np.empty(0, dtype=int)
-        pool = np.unique(np.concatenate([d_top, l_top])) if l_top.size else np.unique(d_top)
+        best = {}      # record index -> fused score
+        via = {}       # record index -> which language surface found it
+        for lg in langs:
+            idx = self.lang_index(lg)
+            if idx is None:
+                continue
+            dense = idx["E"].astype(np.float32) @ qv
+            lex = idx["bm25"].score(surface_text(lg, query))
+            n = len(dense)
+            d_top = np.argpartition(-dense, min(CANDIDATES, n - 1))[:CANDIDATES]
+            nz = np.nonzero(lex)[0]
+            l_top = nz[np.argsort(-lex[nz])[:CANDIDATES]] if nz.size else np.empty(0, int)
+            pool = np.unique(np.concatenate([d_top, l_top])) if l_top.size else np.unique(d_top)
+            fused = dense_w * _zscore(dense)[pool] + lex_w * _zscore(lex)[pool]
+            for p, sc in zip(pool, fused):
+                ri = int(idx["rows"][p])
+                # A record reachable in two languages keeps its better score; the surfaces are
+                # alternative routes to one text, not independent pieces of evidence.
+                if sc > best.get(ri, -1e9):
+                    best[ri] = float(sc)
+                    via[ri] = lg
 
-        fused = dense_w * _zscore(dense)[pool] + lex_w * _zscore(lex)[pool]
+        if not best:
+            return []
+        items = np.array(list(best.keys()))
+        scores = np.array([best[i] for i in items], dtype=np.float32)
 
-        kind = wanted_kind(qn)
+        toks = set(surface_text("ar" if lang in ("ar", "ur") else lang, query).split())
+        kind = wanted_kind(toks)
         if kind:
-            # Scaled by the pool's own spread: KIND_BOOST is a fraction of the gap between the
-            # best and worst candidate, not a fixed number of z-units, so it nudges rather than
-            # overrides.
-            same = np.array([self.recs[i]["kind"] == kind for i in pool])
-            spread = float(fused.max() - fused.min()) or 1.0
-            fused = fused + np.where(same, KIND_BOOST, -KIND_BOOST) * spread
+            same = np.array([self.recs[i]["kind"] == kind for i in items])
+            spread = float(scores.max() - scores.min()) or 1.0
+            scores = scores + np.where(same, KIND_BOOST, -KIND_BOOST) * spread
 
-        order = pool[np.argsort(-fused)][:k]
-        rank_score = {int(i): float(sc) for i, sc in zip(pool[np.argsort(-fused)],
-                                                         np.sort(fused)[::-1])}
+        # Rank everything, then collapse variants, then take k distinct texts.
+        order = np.argsort(-scores)
         out = []
-        for i in order:
-            r = self.recs[i]
-            out.append({
-                **{key: r.get(key) for key in
-                   ("id", "kind", "collection", "ref", "text", "matn", "grade", "grade_note",
-                    "severity", "severity_ar", "action", "scope", "graders", "section",
-                    "surah_name", "ayah", "number", "grade_basis")},
-                "score": rank_score[int(i)],
-                "dense": float(dense[i]),
-                "lexical": float(lex[i]),
-                "asked_for": kind,
-                "verify_url": verify_url(plain(r.get("matn", ""))) if r["kind"] == "hadith" else None,
-            })
+        kept_tokens = []
+        for o in order:
+            if len(out) >= k:
+                break
+            ri = int(items[o])
+            rec = self.recs[ri]
+            disp = self.display(rec["id"])
+            toks = set((rec.get("surah_name") and "" or "").split())
+            toks = set(_match_tokens(self, ri))
+            dup_of = None
+            for pos, prev in enumerate(kept_tokens):
+                d = min(len(toks), len(prev))
+                if d >= VARIANT_MIN_TOKENS and len(toks & prev) / d >= VARIANT_CONTAINMENT:
+                    dup_of = pos
+                    break
+            if dup_of is not None:
+                out[dup_of].setdefault("variants", []).append(
+                    {"id": rec["id"], "ref": rec["ref"], "grade": rec.get("grade")})
+                continue
+            r = dict(rec)
+            r.update(disp)
+            r["score"] = float(scores[o])
+            r["matched_language"] = via[ri]
+            r["query_language"] = lang
+            r["variants"] = []
+            r["verify_url"] = (verify_url(plain(r.get("matn") or ""))
+                               if r["kind"] == "hadith" else None)
+            out.append(r)
+            kept_tokens.append(toks)
         return out

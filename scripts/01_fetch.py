@@ -11,7 +11,8 @@ Usage: python3 scripts/01_fetch.py
 """
 import os, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from _common import (CDN, HADITH_BOOKS, QURAN_EDITION, QURAN_MATCH_EDITION, RAW,
+from _common import (CDN, HADITH_BOOKS, HADITH_LANG_COVERAGE, HADITH_LANG_PREFIX,
+                     QURAN_EDITION, QURAN_MATCH_EDITION, QURAN_TRANSLATIONS, RAW,
                      fetch, ran, say)
 
 
@@ -31,6 +32,19 @@ def main():
     for key in HADITH_BOOKS:
         fetch(f"{CDN}/hadith-api@1/editions/ara-{key}.json",
               os.path.join(RAW, f"hadith-{key}.json"))
+
+    say(f"\nQuran translations — {len(QURAN_TRANSLATIONS)} languages (matching surfaces only)")
+    for lang, ed in QURAN_TRANSLATIONS.items():
+        fetch(f"{CDN}/quran-api@1/editions/{ed}.json",
+              os.path.join(RAW, f"quran-{lang}-{ed}.json"), required=False)
+
+    say(f"\nHadith translations — {len(HADITH_LANG_PREFIX)} languages")
+    for lang, prefix in HADITH_LANG_PREFIX.items():
+        books = HADITH_LANG_COVERAGE[lang]
+        for b in books:
+            fetch(f"{CDN}/hadith-api@1/editions/{prefix}-{b}.json",
+                  os.path.join(RAW, f"hadith-{lang}-{b}.json"), required=False)
+        say(f"    {lang}: {len(books)}/6 collections")
 
     total = sum(os.path.getsize(os.path.join(RAW, f)) for f in os.listdir(RAW))
     say(f"\nraw corpus: {total/1e6:.1f} MB in {RAW}")

@@ -18,13 +18,14 @@ from _grades import (SEVERITY_ACTION, SEVERITY_AR, grader_ar, label as grade_lab
 from _common import (CORPUS, HADITH_BOOKS, QURAN_EDITION, QURAN_MATCH_EDITION, RAW,
                      dump, load, ran, say)
 from _surahs import surah_name, verses_count
+from _surfaces import load_hadith_surfaces, load_quran_surfaces
 
 # Al-Albani's rulings are the most widely cited in these editions, so his is used as the display
 # label when present. Every other named ruling is kept and shown alongside it.
 PREFERRED_GRADER = "Al-Albani"
 
 
-def build_quran():
+def build_quran(qsurf):
     ayahs = load(os.path.join(RAW, f"quran-{QURAN_EDITION}.json"))["quran"]
     simple = load(os.path.join(RAW, f"quran-{QURAN_MATCH_EDITION}.json"))["quran"]
     if len(ayahs) != len(simple) or any(
@@ -50,6 +51,8 @@ def build_quran():
             # Display from the Uthmani edition, matching from the simple one.
             "match_text": normalize(match_src),
             "match_source": QURAN_MATCH_EDITION,
+            "surfaces": {lg: m[(s, v)][0] for lg, m in qsurf.items() if (s, v) in m},
+            "translations": {lg: m[(s, v)][1] for lg, m in qsurf.items() if (s, v) in m},
             "grade": "قرآن كريم",
             "grade_raw": None,
             "grade_basis": "quran",
@@ -84,7 +87,7 @@ def pick_grade(graders):
             grade_severity(raw), grade_scope(raw))
 
 
-def build_hadith(key):
+def build_hadith(key, hsurf):
     meta = HADITH_BOOKS[key]
     raw = load(os.path.join(RAW, f"hadith-{key}.json"))
     sections = (raw.get("metadata") or {}).get("sections") or {}
@@ -137,6 +140,8 @@ def build_hadith(key):
             "scope": scp,
             "graders": [dict(g, grade_ar=grade_label(g["grade"]),
                              grader_ar=grader_ar(g["grader"])) for g in graders],
+            "surfaces": {lg: m[(key, num)][0] for lg, m in hsurf.items() if (key, num) in m},
+            "translations": {lg: m[(key, num)][1] for lg, m in hsurf.items() if (key, num) in m},
             "split_rule": rule,
         })
     say(f"  {key:9s}: {len(out):5d} records (dropped {dropped} empty) | "
@@ -146,13 +151,17 @@ def build_hadith(key):
 
 def main():
     ran("python3 scripts/02_normalize.py")
+    say("\nTranslation surfaces (matching only; the answer is always the Arabic)")
+    qsurf = load_quran_surfaces()
+    hsurf = load_hadith_surfaces()
+
     say("\nQuran")
-    records = build_quran()
+    records = build_quran(qsurf)
 
     say("\nHadith")
     all_rules = Counter()
     for key in HADITH_BOOKS:
-        recs, rules = build_hadith(key)
+        recs, rules = build_hadith(key, hsurf)
         records += recs
         all_rules += rules
 
@@ -172,6 +181,10 @@ def main():
         "split_rules": dict(all_rules),
         "grade_basis": dict(Counter(r["grade_basis"] for r in records)),
         "quran_edition": QURAN_EDITION,
+        "surface_coverage": {
+            lg: sum(1 for r in records if lg in r.get("surfaces", {}))
+            for lg in sorted({k for r in records for k in r.get("surfaces", {})})
+        },
     }
     dump(stats, os.path.join(CORPUS, "stats.json"))
     say("next: python3 scripts/03_report.py")

@@ -165,3 +165,13 @@ def clean_display(s):
     while out and out[-1] in noise:
         out = out[:-1]
     return out.strip()
+
+
+def plain(s):
+    """Diacritics and punctuation removed, but spelling left intact: no alef/ya/hamza folding.
+
+    Use this for anything leaving the system. Folded text is for internal matching only -
+    folding turns شيئا into شييا and نسائه into نسايه, which no external search will match.
+    """
+    stripped, _ = strip_with_map(s or "")
+    return _WS.sub(" ", _PUNCT.sub(" ", stripped)).strip()

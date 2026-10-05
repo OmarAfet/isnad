@@ -1,0 +1,6 @@
+data/raw/
+data/corpus/corpus.jsonl
+__pycache__/
+*.pyc
+.venv/
+.env

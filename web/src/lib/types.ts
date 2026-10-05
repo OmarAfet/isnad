@@ -5,6 +5,7 @@ export type Verdict =
   | "tentative"
   | "unsure"
   | "no_match"
+  | "topic"
   | "fatwa_request"
   | "decision_unavailable";
 
@@ -38,6 +39,7 @@ export interface TextRecord {
   number: number | string | null;
   matn: string;
   sanad: string | null;
+  commentary?: string | null;
   grade: string | null;
   grade_basis: "quran" | "inherent" | "cited" | "none" | null;
   severity: Severity | null;
@@ -49,6 +51,7 @@ export interface TextRecord {
   matched_language: string | null;
   verify_url: string | null;
   probability?: number;
+  relevance?: number;
 }
 
 export interface SearchResponse {
@@ -59,6 +62,7 @@ export interface SearchResponse {
   specific_enough: number | null;
   result: TextRecord | null;
   alternatives: TextRecord[];
+  topic?: TextRecord[];
   jev?: { rounds: number; net: number; groups: number };
   timing_ms: { search: number; decide: number | null; total: number };
   cached?: boolean;

@@ -4,7 +4,9 @@ import { useState } from "react";
 import {
   AlertTriangle,
   ChevronDown,
+  ChevronLeft,
   CircleSlash,
+  ListTree,
   Copy,
   ExternalLink,
   OctagonAlert,
@@ -21,7 +23,13 @@ import { Chain, Link } from "./chain";
 import { GradeBadge, dotTone } from "./grade-badge";
 import { MatchMeter } from "./match-meter";
 
-export function ResultView({ data }: { data: SearchResponse }) {
+export function ResultView({
+  data,
+  onPick,
+}: {
+  data: SearchResponse;
+  onPick?: (text: string) => void;
+}) {
   const { verdict, result } = data;
 
   // The chain always starts with what the reader wrote, so every outcome, including silence,
@@ -41,14 +49,32 @@ export function ResultView({ data }: { data: SearchResponse }) {
     );
   }
 
-  if (verdict === "no_match" || (!result && verdict !== "decision_unavailable")) {
+  if (verdict === "topic" && data.topic?.length) {
+    return (
+      <div className="space-y-5">
+        <Chain>
+          {description}
+          <Terminal icon={<ListTree className="size-5" />} text={copy.verdict.topic} />
+        </Chain>
+        <ul className="space-y-3">
+          {data.topic.map((t) => (
+            <li key={t.id}>
+              <TopicCard record={t} onPick={onPick} />
+            </li>
+          ))}
+        </ul>
+      </div>
+    );
+  }
+
+  if (verdict === "no_match" || verdict === "topic" || (!result && verdict !== "decision_unavailable")) {
     const vague = (data.specific_enough ?? 1) < 0.35;
     return (
       <Chain>
         {description}
         <Terminal
           icon={<CircleSlash className="size-5" />}
-          text={copy.verdict.noMatch}
+          text={vague ? copy.verdict.noMatchVagueLead : copy.verdict.noMatch}
           sub={vague ? copy.verdict.noMatchVague : undefined}
         />
       </Chain>
@@ -105,6 +131,7 @@ export function ResultView({ data }: { data: SearchResponse }) {
             </p>
           )}
           {r.sanad && <Sanad text={r.sanad} />}
+          {r.commentary && <Note label={copy.chain.commentary} text={r.commentary} />}
         </Link>
 
         <Link label={copy.chain.ruling} dot={dotTone(r.severity)} last>
@@ -178,6 +205,24 @@ function Sanad({ text }: { text: string }) {
     <Collapsible open={open} onOpenChange={setOpen} className="mt-2">
       <CollapsibleTrigger className="inline-flex items-center gap-1 text-sm text-primary hover:underline rounded-sm focus-visible:outline-2">
         {open ? copy.chain.hideSanad : copy.chain.showSanad}
+        <ChevronDown className={cn("size-4 transition-transform", open && "rotate-180")} />
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+        <p className="scripture mt-2 text-base text-muted-foreground">{text}</p>
+      </CollapsibleContent>
+    </Collapsible>
+  );
+}
+
+// The compiler's own words after the hadith, for example al-Tirmidhi's "هذا حديث حسن". Kept
+// apart from the text so they are never read as the Prophet's words, and shown on request because
+// they often carry the compiler's own grading.
+function Note({ label, text }: { label: string; text: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <Collapsible open={open} onOpenChange={setOpen} className="mt-1">
+      <CollapsibleTrigger className="inline-flex items-center gap-1 text-sm text-primary hover:underline rounded-sm focus-visible:outline-2">
+        {label}
         <ChevronDown className={cn("size-4 transition-transform", open && "rotate-180")} />
       </CollapsibleTrigger>
       <CollapsibleContent>
@@ -323,5 +368,30 @@ function Alternatives({ items }: { items: TextRecord[] }) {
         ))}
       </ul>
     </section>
+  );
+}
+
+function TopicCard({ record: t, onPick }: { record: TextRecord; onPick?: (q: string) => void }) {
+  const isAyah = t.kind === "ayah";
+  // Opening a card searches for its own text, so it lands in the full chain view: source,
+  // ruling, every named grader, variants and the dorar link, not a summary of them.
+  return (
+    <button
+      type="button"
+      onClick={() => onPick?.(t.matn.slice(0, 220))}
+      aria-label={`${copy.verdict.topicOpen}: ${t.ref}`}
+      className="group w-full rounded-lg border bg-card p-4 text-start transition-colors hover:border-primary/50 focus-visible:outline-2 focus-visible:outline-ring"
+    >
+      <div className="mb-2 flex flex-wrap items-center gap-2 text-sm">
+        <bdi className="font-medium">{t.ref}</bdi>
+        {isAyah ? (
+          <GradeBadge severity="quran" label={copy.grade.quran} />
+        ) : (
+          <GradeBadge severity={t.severity} label={t.grade ?? copy.grade.unknown} />
+        )}
+        <ChevronLeft className="ms-auto size-4 text-muted-foreground transition-transform group-hover:-translate-x-0.5" />
+      </div>
+      <p className={cn(isAyah ? "quran" : "scripture", "text-lg line-clamp-3")}>{t.matn}</p>
+    </button>
   );
 }

@@ -92,7 +92,7 @@ export function IsnadApp() {
             <AlertDescription>{state.message}</AlertDescription>
           </Alert>
         )}
-        {state.status === "done" && <ResultView data={state.data} />}
+        {state.status === "done" && <ResultView data={state.data} onPick={onSearch} />}
       </div>
     </div>
   );

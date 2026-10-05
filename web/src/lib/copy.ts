@@ -30,6 +30,7 @@ export const copy = {
     otherRulings: "أحكام العلماء الآخرين",
     showSanad: "اعرض السند",
     hideSanad: "اخفِ السند",
+    commentary: "تعليق صاحب الكتاب",
     translation: "الترجمة المنشورة",
     translator: (name: string) => `ترجمة ${name}`,
     translatorUnknown: "المصدر ما ذكر اسم المترجم",
@@ -47,7 +48,12 @@ export const copy = {
     tentative: "هذا أقرب نص لوصفك، بس تأكد من المصدر قبل لا تستشهد فيه.",
     unsure: "ما نقدر نجزم إنه النص اللي تقصده، فلا تستشهد فيه قبل لا تتحقق.",
     noMatch: "ما لقينا نص مطابق في المصادر المعتمدة.",
+    // For a broad description "not found" would be false: the sources may hold many texts on
+    // the subject. This line is true in every case it is shown.
+    noMatchVagueLead: "ما قدرنا نحدد النص اللي تقصده.",
     noMatchVague: "اكتب جزء من لفظه أو معناه عشان نلقاه.",
+    topic: "فيه أكثر من نص عن هذا. اختر اللي تقصده:",
+    topicOpen: "اعرض هذا النص",
     fatwa: "سؤالك يحتاج فتوى، وإسناد ما يفتي. اسأل أهل العلم أو جهة إفتاء معتمدة.",
     unavailable: "خدمة التحقق متوقفة الحين. هذي نتائج بحث ما تأكدنا منها.",
   },

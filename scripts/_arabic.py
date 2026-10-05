@@ -184,3 +184,56 @@ def plain(s):
     stripped, _ = strip_with_map(s or "")
     stripped = stripped.translate(_LETTER_VARIANTS)
     return _WS.sub(" ", _PUNCT.sub(" ", stripped)).strip()
+
+
+# ---------- compiler's commentary ----------
+# The editions run the compiler's own notes straight on after the Prophet's words:
+#   "...ليصلح بين الناس " . قال أبو عيسى هذا حديث حسن لا نعرفه إلا...
+# That tail is not the hadith. Shown as the text, it puts al-Tirmidhi's words in the Prophet's
+# mouth, which the framework's attribution rule forbids. It is also not discarded: al-Tirmidhi's
+# "هذا حديث حسن" is his own grading, so it is split off and shown separately.
+#
+# Only unambiguous markers cut. Measured over 34,153 matns: قال أبو عيسى ends 2,955 of them, and
+# Abu Isa is al-Tirmidhi; قال أبو داود (762), قال أبو عبد الرحمن (al-Nasa'i, 167), وفي الباب عن
+# (1,150). Cutting at the first closing quote was rejected: it would truncate dialogue hadith such
+# as the revelation narrative, "ما أنا بقارئ". قال "فأخذني...
+_COMMENTARY = re.compile(
+    r"(?:قال\s+ابو\s+عيسي|(?:قال\s+)?وفي\s+الباب\s+عن|قال\s+ابو\s+داود"
+    r"|قال\s+ابو\s+عبد\s+الرحمن|وفي\s+الحديث\s+قصه"
+    r"|(?<=[\".])\s*(?:وفي\s+حديث|وفي\s+روايه)"
+    r"|\"\s*\.?\s*(?=(?:و?حدثنا|و?اخبرنا|و?حدثني)\b))"
+)
+# A new chain after a full stop ("... . حدثنا بندار") is usually the next isnad, but "حدثنا" also
+# opens real speech ("حدثنا رسول الله وهو الصادق المصدوق"). So that marker only cuts in the later
+# part of a text, where a second isnad sits and the hadith does not begin.
+_LATE_CHAIN = re.compile(r"(?<=\.)\s*(?:و?حدثنا|و?اخبرنا)\b")
+_LATE_FRACTION = 0.40
+_TRIM_EDGE = set(" .,،؛\"'‏‎")
+
+
+def split_commentary(matn):
+    """Return (core, commentary). The core keeps its diacritics; nothing is rewritten."""
+    if not matn:
+        return matn or "", ""
+    stripped, offsets = strip_with_map(matn)
+    folded = fold(stripped)
+    starts = []
+    m = _COMMENTARY.search(folded)
+    if m and m.start() > 0:
+        starts.append(m.start())
+    for lm in _LATE_CHAIN.finditer(folded):
+        if lm.start() >= len(folded) * _LATE_FRACTION:
+            starts.append(lm.start())
+            break
+    if not starts:
+        return matn, ""
+    pos = min(starts)
+    cut = offsets[pos] if pos < len(offsets) else len(matn)
+    core, tail = matn[:cut], matn[cut:]
+    if len(normalize(core)) < 8:        # what remains is not a text; leave the record alone
+        return matn, ""
+    while core and core[-1] in _TRIM_EDGE:
+        core = core[:-1]
+    while tail and tail[0] in _TRIM_EDGE:
+        tail = tail[1:]
+    return core.strip(), tail.strip()

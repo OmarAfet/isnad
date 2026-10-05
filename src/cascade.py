@@ -86,6 +86,29 @@ FATWA_INSTRUCTIONS = (
 )
 FATWA_THRESHOLD = 0.60
 
+# TOPIC MODE. "حديث عن الكذب" names a subject, not a text: there are dozens of hadiths about
+# lying. Isnad used to answer it with "no matching text in the approved sources", which is false -
+# fast search had already shortlisted Tirmidhi 1939, Muslim 6638, Ibn Majah 31 and An-Nahl 116 -
+# and a reader could leave believing the sources say nothing about lying.
+#
+# When the presence judgment says the description is broad, round two also asks one Noul per
+# candidate, "is this text about that subject?", in the same request as the final Choice, so a
+# topic query costs no extra round trip. The relevant texts are listed with their sources and
+# rulings; the reader picks the one they mean. Still selection, never generation.
+TOPIC_SPECIFIC = 0.35      # below this, the description names a subject rather than a text
+TOPIC_K = 24               # candidates judged for relevance
+TOPIC_MIN_REL = 0.60
+TOPIC_MAX = 8
+RELEVANCE_INSTRUCTIONS = (
+    "Is the text at `texts[{i}].text` about the subject the user is asking about in "
+    "`description`? Answer yes only if the text itself addresses that subject, not if it merely "
+    "shares a word with it."
+)
+# Authentic texts first: present the sound before the weak, as the framework's da'wah quality
+# standard asks. Weak and fabricated texts stay on the list, clearly graded, because knowing that
+# a saying people circulate is fabricated is itself what the reader needs.
+_GRADE_ORDER = {"quran": 0, "sahih": 0, "hasan": 0, "unknown": 1, "daif": 2, "mawdu": 2}
+
 SPECIFIC_INSTRUCTIONS = (
     "Does this description contain enough specific detail to identify one particular Qur'anic "
     "verse or hadith, as opposed to naming a broad topic?"
@@ -108,6 +131,28 @@ def _criteria(group):
         crit[k] = tag + (c.get("matn") or "")[:MAX_CAND_CHARS]
     crit[NO_MATCH] = NO_MATCH_DESC
     return crit, keymap
+
+
+def _topic_pool(cands):
+    """The first TOPIC_K distinct texts from stage one, with looser copies of one report merged
+    so the relevance list does not show the same hadith twice."""
+    pool = []
+    for c in cands:
+        if any(_same_report(c, p) for p in pool):
+            continue
+        pool.append(c)
+        if len(pool) >= TOPIC_K:
+            break
+    return pool
+
+
+def _dedupe(pairs):
+    out = []
+    for c, p in pairs:
+        if any(_same_report(c, q) for q, _ in out):
+            continue
+        out.append((c, p))
+    return out
 
 
 def _groups(candidates, size=GROUP):
@@ -155,43 +200,69 @@ async def run(query, candidates, client=None, net=NET, group=GROUP):
         if not finalists:
             return _result("no_match", None, 1.0, None, specific, rounds, len(cands), len(groups))
 
+        topic_pool = _topic_pool(cands) if specific < TOPIC_SPECIFIC else []
+
         # Order finalists by round-one confidence so the strongest candidates survive the cap.
         finalists.sort(key=lambda t: -t[1])
         short = [f[0] for f in finalists[:MAX_FINALISTS]]
 
-        if len(short) == 1:
-            # One survivor still goes to round two: its round-one confidence was measured against
-            # eleven neighbours, not against the field, and the product reports a calibrated
-            # number or it reports nothing.
-            pass
+        q2, km = {}, {}
+        state2 = dict(state)
+        if short:
+            crit, km = _criteria(short)
+            q2["pick"] = Choice(instructions=PICK_INSTRUCTIONS, criteria=crit)
+        if topic_pool:
+            state2["texts"] = [{"kind": "Qur'an verse" if c.get("kind") == "ayah" else "hadith",
+                                "text": (c.get("matn") or "")[:MAX_CAND_CHARS]}
+                               for c in topic_pool]
+            for i in range(len(topic_pool)):
+                q2[f"t{i}"] = Noul(instructions=RELEVANCE_INSTRUCTIONS.format(i=i))
+        if not q2:
+            return _result("no_match", None, 1.0, None, specific, rounds, len(cands), len(groups))
 
-        crit, km = _criteria(short)
-        r2 = await client.system_one(
-            state=state,
-            questions={"pick": Choice(instructions=PICK_INSTRUCTIONS, criteria=crit)},
-            model=MODEL)
+        r2 = await client.system_one(state=state2, questions=q2, model=MODEL)
         rounds = 2
-        pick = r2.answers["pick"]
-        conf = float(pick.confidence)
-        probs = {k: float(v) for k, v in (pick.probabilities or {}).items()}
 
-        if pick.choice == NO_MATCH or pick.choice not in km:
-            return _result("no_match", None, conf, None, specific, rounds, len(cands), len(groups))
-        rec = km[pick.choice]
-        family = [k for k in km if k != pick.choice and _same_report(km[k], rec)]
-        p_report = probs.get(pick.choice, 0.0) + sum(probs.get(k, 0.0) for k in family)
-        # The verdict rests on the probability of the REPORT. Jev's own confidence statistic
-        # measures how concentrated the distribution is, and a distribution split between two
-        # copies of one hadith is concentrated on one answer even though it looks spread.
-        verdict = ("confident" if p_report >= HIGH else "tentative" if p_report >= LOW
-                   else "unsure")
-        out = _result(verdict, rec, p_report, probs.get(pick.choice), specific, rounds,
-                      len(cands), len(groups),
-                      probabilities={(km[k]["id"] if k in km else k): v
-                                     for k, v in probs.items()})
-        out["jev_confidence"] = conf
-        out["family"] = [km[k]["id"] for k in family]
-        return out
+        specific_answer = None
+        if "pick" in q2:
+            pick = r2.answers["pick"]
+            conf = float(pick.confidence)
+            probs = {k: float(v) for k, v in (pick.probabilities or {}).items()}
+            if pick.choice != NO_MATCH and pick.choice in km:
+                rec = km[pick.choice]
+                family = [k for k in km if k != pick.choice and _same_report(km[k], rec)]
+                p_report = probs.get(pick.choice, 0.0) + sum(probs.get(k, 0.0) for k in family)
+                # The verdict rests on the probability of the REPORT. Jev's own confidence
+                # statistic measures how concentrated the distribution is, and a distribution
+                # split between two copies of one hadith is concentrated on one answer even
+                # though it looks spread.
+                verdict = ("confident" if p_report >= HIGH else "tentative" if p_report >= LOW
+                           else "unsure")
+                specific_answer = _result(
+                    verdict, rec, p_report, probs.get(pick.choice), specific, rounds,
+                    len(cands), len(groups),
+                    probabilities={(km[k]["id"] if k in km else k): v for k, v in probs.items()})
+                specific_answer["jev_confidence"] = conf
+                specific_answer["family"] = [km[k]["id"] for k in family]
+
+        # A broad description that still pointed clearly at one text gets that text.
+        if specific_answer and (specific_answer["verdict"] == "confident" or not topic_pool):
+            return specific_answer
+
+        if topic_pool:
+            scored = [(c, float(r2.answers[f"t{i}"].noul)) for i, c in enumerate(topic_pool)]
+            relevant = _dedupe([(c, p) for c, p in scored if p >= TOPIC_MIN_REL])
+            if relevant:
+                relevant.sort(key=lambda cp: (_GRADE_ORDER.get(cp[0].get("severity") or
+                                                               "unknown", 1), -cp[1]))
+                out = _result("topic", None, None, None, specific, rounds, len(cands),
+                              len(groups))
+                out["topic"] = [{"record": c, "relevance": p} for c, p in relevant[:TOPIC_MAX]]
+                return out
+
+        if specific_answer:
+            return specific_answer
+        return _result("no_match", None, 1.0, None, specific, rounds, len(cands), len(groups))
     finally:
         if own:
             await client.close()
@@ -210,6 +281,7 @@ def _result(verdict, record, conf, prob, specific, rounds, net, groups, probabil
         "fatwa_request": None,
         "jev_confidence": None,
         "family": [],
+        "topic": [],
         "net": net,
         "groups": groups,
     }

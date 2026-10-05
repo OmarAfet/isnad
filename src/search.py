@@ -24,7 +24,7 @@ import numpy as np
 HERE = os.path.dirname(os.path.abspath(__file__))
 INDEX = os.path.join(HERE, "..", "data", "index")
 sys.path.insert(0, os.path.join(HERE, "..", "scripts"))
-from _arabic import plain                     # noqa: E402
+from _arabic import plain, split_commentary   # noqa: E402
 from _dorar import verify_url                 # noqa: E402
 from _lang import detect                      # noqa: E402
 from _surfaces import surface_text            # noqa: E402
@@ -236,6 +236,10 @@ class Isnad:
                 continue
             r = dict(rec)
             r.update(disp)
+            # The compiler's notes come off the text and travel beside it, so Jev judges, and the
+            # reader sees, the Prophet's words alone, and al-Tirmidhi's own grading is still shown.
+            if r.get("kind") == "hadith":
+                r["matn"], r["commentary"] = split_commentary(r.get("matn") or "")
             r["score"] = float(scores[o])
             r["matched_language"] = via[ri]
             r["query_language"] = lang

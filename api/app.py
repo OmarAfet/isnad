@@ -121,6 +121,7 @@ def _shape(rec, lang):
         "number": rec.get("number"),
         "matn": rec.get("matn") or rec.get("text"),
         "sanad": rec.get("sanad") if kind == "hadith" else None,
+        "commentary": rec.get("commentary") or None,
         "grade": rec.get("grade"),
         "grade_basis": rec.get("grade_basis"),
         "severity": rec.get("severity"),
@@ -215,6 +216,10 @@ async def search(body: SearchIn, request: Request):
         "result": _shape(d["record"], lang),
         "alternatives": [dict(_shape(by_id[rid], lang), probability=round(p, 3))
                          for rid, p in alts],
+        # Topic mode: the description names a subject, so every relevant text is listed with its
+        # source and ruling, sound texts first, and the reader chooses.
+        "topic": [dict(_shape(t["record"], lang), relevance=round(t["relevance"], 3))
+                  for t in (d.get("topic") or [])],
         "jev": {"rounds": d["jev_rounds"], "net": d["net"], "groups": d["groups"],
                 "confidence": d.get("jev_confidence"), "merged_copies": len(family)},
         "timing_ms": {"search": round(t_search), "decide": round(t_decide),

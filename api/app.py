@@ -40,9 +40,12 @@ RATE_LIMIT = 30                   # requests per IP per minute; the Jev key is r
 ALTERNATIVES = 3
 ALT_MIN_PROB = 0.05
 
-# The team lead's choice: Jev reads every text ("knockout"). "net" keeps the earlier design, a
-# 120-text shortlist from search, as a fallback switch.
-MODE = os.environ.get("ISNAD_MODE", "knockout")
+# Default: "net" - search shortlists 120 texts, Jev decides over them in two rounds (~1 s).
+# "knockout" makes Jev read all 40,389 texts on every search (~40 s, ~3.5M tokens). The team lead
+# chose knockout for accuracy, then reverted to net after using it: the 40-second wait was too
+# long. Knockout stays available, since on topic queries it found hadith the shortlist missed
+# (Muslim 4, Bukhari 2682, Bukhari 2459 for "حديث عن الكذب").
+MODE = os.environ.get("ISNAD_MODE", "net")
 CACHE_VERSION = "2026-10-05.knockout-1"   # bump when behaviour changes, so stale answers die
 CACHE_FILE = os.path.join(ROOT, "data", "cache", f"answers-{MODE}.json")
 

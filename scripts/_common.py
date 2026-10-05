@@ -21,8 +21,13 @@ HADITH_BOOKS = {
     "ibnmajah": {"ar": "سنن ابن ماجه",  "short": "ابن ماجه",  "grade_basis": "cited"},
 }
 
-# King Fahd Complex Uthmani text — the edition the challenge's Reference Framework names.
+# Two Quran editions, for two different jobs.
+#   display  — King Fahd Complex Uthmani, the edition the Reference Framework names.
+#   matching — the simple (imlaa'i) orthography. The Uthmani text writes الْعَٰلَمِينَ with a
+#              superscript alef, which normalizes to العلمين, but a user types العالمين and would
+#              never match it. Modern spelling is what people actually enter.
 QURAN_EDITION = "ara-quranuthmanihaf"
+QURAN_MATCH_EDITION = "ara-quransimple"
 
 
 def say(msg):

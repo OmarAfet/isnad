@@ -60,7 +60,7 @@ _PUNCT = re.compile(r"[^ء-ي٠-٩a-zA-Z0-9\s]")
 def normalize(s):
     """Full normalization for matching and embedding. Offsets are NOT preserved."""
     stripped, _ = strip_with_map(s or "")
-    return _WS.sub(" ", _PUNCT.sub(" ", fold(stripped))).strip()
+    return _WS.sub(" ", _PUNCT.sub(" ", fold(stripped).translate(_LETTER_VARIANTS))).strip()
 
 
 # ---------- sanad / matn ----------
@@ -167,6 +167,14 @@ def clean_display(s):
     return out.strip()
 
 
+# Letters that sit outside _PUNCT's keep-range and would otherwise be deleted rather than kept.
+# U+0671 ALEF WASLA is the one that matters: it opens almost every definite article in the
+# Uthmani text, so deleting it turned الحمد into لحمد across all 6,236 ayahs.
+_LETTER_VARIANTS = str.maketrans({
+    "\u0671": "\u0627", "\u0672": "\u0627", "\u0673": "\u0627", "\u0675": "\u0627",
+})
+
+
 def plain(s):
     """Diacritics and punctuation removed, but spelling left intact: no alef/ya/hamza folding.
 
@@ -174,4 +182,5 @@ def plain(s):
     folding turns شيئا into شييا and نسائه into نسايه, which no external search will match.
     """
     stripped, _ = strip_with_map(s or "")
+    stripped = stripped.translate(_LETTER_VARIANTS)
     return _WS.sub(" ", _PUNCT.sub(" ", stripped)).strip()

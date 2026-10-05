@@ -1,0 +1,12 @@
+{
+ "model": "intfloat/multilingual-e5-base",
+ "dim": 768,
+ "records": 40389,
+ "doc_prefix": "passage: ",
+ "query_prefix": "query: ",
+ "max_chars": 700,
+ "dtype": "float16",
+ "f16_max_cosine_error": 8.678436279296875e-05,
+ "device": "mps",
+ "built": "2026-10-05T18:04:24"
+}

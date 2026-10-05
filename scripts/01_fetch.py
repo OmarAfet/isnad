@@ -11,7 +11,8 @@ Usage: python3 scripts/01_fetch.py
 """
 import os, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from _common import CDN, HADITH_BOOKS, QURAN_EDITION, RAW, fetch, ran, say
+from _common import (CDN, HADITH_BOOKS, QURAN_EDITION, QURAN_MATCH_EDITION, RAW,
+                     fetch, ran, say)
 
 
 def main():
@@ -19,6 +20,8 @@ def main():
     say(f"\nQuran — {QURAN_EDITION} (King Fahd Complex Uthmani)")
     fetch(f"{CDN}/quran-api@1/editions/{QURAN_EDITION}.json",
           os.path.join(RAW, f"quran-{QURAN_EDITION}.json"))
+    fetch(f"{CDN}/quran-api@1/editions/{QURAN_MATCH_EDITION}.json",
+          os.path.join(RAW, f"quran-{QURAN_MATCH_EDITION}.json"))
     # Surah names and per-surah verse counts. The counts are an integrity check on the text above,
     # not decoration: 02_normalize.py refuses to build a corpus that disagrees with them.
     fetch("https://api.quran.com/api/v4/chapters?language=ar",

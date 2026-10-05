@@ -15,7 +15,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from _arabic import clean_display, normalize, split_sanad_matn
 from _grades import (SEVERITY_ACTION, SEVERITY_AR, grader_ar, label as grade_label,
                      scope as grade_scope, severity as grade_severity)
-from _common import CORPUS, HADITH_BOOKS, QURAN_EDITION, RAW, dump, load, ran, say
+from _common import (CORPUS, HADITH_BOOKS, QURAN_EDITION, QURAN_MATCH_EDITION, RAW,
+                     dump, load, ran, say)
 from _surahs import surah_name, verses_count
 
 # Al-Albani's rulings are the most widely cited in these editions, so his is used as the display
@@ -24,12 +25,17 @@ PREFERRED_GRADER = "Al-Albani"
 
 
 def build_quran():
-    path = os.path.join(RAW, f"quran-{QURAN_EDITION}.json")
-    ayahs = load(path)["quran"]
+    ayahs = load(os.path.join(RAW, f"quran-{QURAN_EDITION}.json"))["quran"]
+    simple = load(os.path.join(RAW, f"quran-{QURAN_MATCH_EDITION}.json"))["quran"]
+    if len(ayahs) != len(simple) or any(
+            a["chapter"] != b["chapter"] or a["verse"] != b["verse"]
+            for a, b in zip(ayahs, simple)):
+        raise SystemExit("the two Quran editions are not ayah-aligned; refusing to build")
     seen = Counter()
     out = []
-    for a in ayahs:
+    for a, b in zip(ayahs, simple):
         s, v, text = a["chapter"], a["verse"], a["text"]
+        match_src = b["text"]
         seen[s] += 1
         name = surah_name(s)
         out.append({
@@ -41,7 +47,9 @@ def build_quran():
             "ref": f"{name}: {v}",
             "text": clean_display(text),
             "matn": clean_display(text),
-            "match_text": normalize(text),
+            # Display from the Uthmani edition, matching from the simple one.
+            "match_text": normalize(match_src),
+            "match_source": QURAN_MATCH_EDITION,
             "grade": "قرآن كريم",
             "grade_raw": None,
             "grade_basis": "quran",

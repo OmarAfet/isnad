@@ -108,9 +108,10 @@ ASK_OPTIONS = {
         "The Islamic ruling on a matter in general: whether something is permitted, forbidden or "
         "obligatory, asked about people in general rather than the asker's own situation."),
     "personal_case": (
-        "A ruling on the asker's own situation or circumstances, for example 'is it permitted for "
-        "me', 'my marriage', 'in my country', so that the answer depends on the facts of their "
-        "case."),
+        "A ruling on the asker's own situation or circumstances, usually asked in the first "
+        "person, for example 'هل يجوز لي', 'هل يجوز أفطر وأنا مسافر', 'طلقت زوجتي', 'is it "
+        "permitted for me', 'my marriage', 'in my country', so that the answer depends on the "
+        "facts of their case."),
 }
 # P(general_ruling) + P(personal_case). Measured (eval/ask_probe.py, 3 runs each): ruling
 # questions 0.97-0.99; "ايه عن بر الوالدين" 0.52-0.56 and once over 0.60 in a live run, which sent

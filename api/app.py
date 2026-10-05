@@ -47,7 +47,7 @@ ALT_MIN_PROB = 0.05
 # long. Knockout stays available, since on topic queries it found hadith the shortlist missed
 # (Muslim 4, Bukhari 2682, Bukhari 2459 for "حديث عن الكذب").
 MODE = os.environ.get("ISNAD_MODE", "net")
-CACHE_VERSION = "2026-10-05.ruling-texts"  # bump when behaviour changes, so stale answers die
+CACHE_VERSION = "2026-10-06.judge-battery"  # bump when behaviour changes, so stale answers die
 # Test runs point ISNAD_CACHE_FILE at /tmp, so they do not overwrite the saved answers in git.
 CACHE_FILE = (os.environ.get("ISNAD_CACHE_FILE")
               or os.path.join(ROOT, "data", "cache", f"answers-{MODE}.json"))
@@ -259,11 +259,19 @@ async def _answer(q, progress=None):
                                    progress=progress)
             cands = d.pop("_candidates", []) if isinstance(d, dict) else []
         else:
-            cands = await asyncio.to_thread(_run_search)
-            t_search = (time.time() - t0) * 1000
-            lang = cands[0]["query_language"] if cands else None
-            t1 = time.time()
-            d = await cascade.run(q, cands, client=STATE["jev"])
+            surah = ix.named_surah(q)
+            if surah:
+                # A surah named on its own is looked up, not judged: its verses, in order.
+                cands, t_search, lang, t1 = surah, (time.time() - t0) * 1000, "ar", time.time()
+                d = cascade._result("topic", None, None, None, 1.0, 0, 0, 0)
+                d["topic"] = [{"record": r, "relevance": 1.0} for r in surah[:cascade.TOPIC_MAX]]
+                d["surah"] = {"name": surah[0].get("surah_name"), "verses": len(surah)}
+            else:
+                cands = await asyncio.to_thread(_run_search)
+                t_search = (time.time() - t0) * 1000
+                lang = cands[0]["query_language"] if cands else None
+                t1 = time.time()
+                d = await cascade.run(q, cands, client=STATE["jev"])
     except Exception as e:
         # Do not hand over a text without a decision.
         return {
@@ -301,6 +309,7 @@ async def _answer(q, progress=None):
         "specific_enough": round(d["specific_enough"], 3),
         "fatwa_request": d.get("fatwa_request"),
         "ruling": d.get("ruling"),
+        "surah": d.get("surah"),
         "result": _shape(d["record"], lang),
         "alternatives": [dict(_shape(by_id[rid], lang), probability=round(p, 3))
                          for rid, p in alts],

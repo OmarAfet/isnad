@@ -18,6 +18,8 @@ DESCRIPTIONS = {   # description: the right class
     "هل يجوز لي الجمع بين الصلاتين في السفر؟": "personal_case",
     "what is the ruling on interest in Islam": "general_ruling",
     "ما حكم الكذب": "general_ruling",
+    "طلقت زوجتي ثلاث مرات وش الحكم": "personal_case",
+    "ما حكم الموسيقى": "general_ruling",
 }
 
 

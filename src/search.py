@@ -24,7 +24,7 @@ import numpy as np
 HERE = os.path.dirname(os.path.abspath(__file__))
 INDEX = os.path.join(HERE, "..", "data", "index")
 sys.path.insert(0, os.path.join(HERE, "..", "scripts"))
-from _arabic import plain, split_commentary   # noqa: E402
+from _arabic import normalize, plain, split_commentary   # noqa: E402
 from _dorar import verify_url                 # noqa: E402
 from _lang import detect                      # noqa: E402
 from _surfaces import surface_text            # noqa: E402
@@ -35,11 +35,16 @@ CANDIDATES = 400          # per retriever per language, before fusion
 
 # The user usually says which kind of text they want, and honouring it is free accuracy: a query
 # containing "الآية" was losing 2:255 to a hadith that quotes 2:255.
-AYAH_CUES = {"ايه", "الايه", "ايات", "الايات", "سوره", "قران", "القران", "مصحف",
-             "verse", "verses", "ayah", "ayat", "quran", "quranic", "surah", "surat"}
-HADITH_CUES = {"حديث", "الحديث", "احاديث", "الاحاديث", "سنه", "السنه", "نبوي", "روي", "اخرج",
-               "hadith", "hadeeth", "hadis", "hadits", "sunnah", "narration", "narrated",
-               "prophet"}
+# The words in each language the battery and the judges' test typed (eval/battery.py): French
+# "verset" was missing, so "le verset sur la patience" listed hadith; so was the accusative
+# "حديثا", so "أعطني حديثا يثبت ..." was answered with a verse.
+AYAH_CUES = {"ايه", "الايه", "ايات", "الايات", "سوره", "قران", "القران", "مصحف", "ايت",
+             "verse", "verses", "ayah", "ayat", "quran", "quranic", "surah", "surat",
+             "verset", "versets", "coran", "sourate", "ayet", "ayeti", "ayetler", "kuran",
+             "suresi", "аят", "аята", "аяте", "аяты", "коран", "сура", "суры"}
+HADITH_CUES = {"حديث", "الحديث", "حديثا", "احاديث", "الاحاديث", "سنه", "السنه", "نبوي", "روي",
+               "اخرج", "hadith", "hadeeth", "hadis", "hadisi", "hadits", "sunnah", "narration",
+               "narrated", "prophet", "хадис", "хадиса", "хадисе", "хадисы"}
 KIND_BOOST = 0.10
 
 # REQUEST WORDS. Words that say which kind of text the reader wants, not what the text says. They
@@ -49,8 +54,23 @@ KIND_BOOST = 0.10
 # Only the kind words: dropping function words too ("عن", "the", "about") measured worse on the
 # labelled single-text queries, and BM25 already gives them little weight (eval/topic_recall.py).
 # "سنه" stays a content word: it is the slumber of 2:255 ("لا تأخذه سنة ولا نوم") as often as Sunnah.
-REQUEST_WORDS = (AYAH_CUES | HADITH_CUES) - {"سنه", "السنه"} | {"ءايه", "آيه"}
+# The phrasing of a ruling question goes too: "حكم" and "الحكمة" (wisdom) share the light10 stem,
+# and for "ما حكم الموسيقى" the shortlist filled with hadith on wisdom.
+RULING_PHRASE = {"حكم", "الحكم", "ماحكم", "يجوز", "شرعا", "الشرع", "الشرعي"}
+REQUEST_WORDS = (AYAH_CUES | HADITH_CUES) - {"سنه", "السنه"} | {"ءايه", "آيه"} | RULING_PHRASE
 LEX_CLEAN = True
+
+
+# WHICH COPY IS SHOWN. A report found in several books shows its copy in al-Bukhari, else in
+# Muslim, with the rest under "ورد أيضًا في". "انما الاعمال بالنيات" was answered with Sunan
+# al-Nasa'i 3794 while its family held al-Bukhari 54 and Muslim 4927; a reader checking the
+# citation, and a judge, expect the Sahihayn first.
+BOOK_RANK = {"bukhari": 0, "muslim": 1}
+
+
+def _book_rank(rid):
+    book, _, num = rid.partition(":")
+    return BOOK_RANK.get(book, 2), int(num) if num.isdigit() else 10 ** 9
 
 
 def literal_query(text):
@@ -215,6 +235,8 @@ class Isnad:
         self.meta = json.load(open(os.path.join(index_dir, "meta.json"), encoding="utf-8"))
         with open(os.path.join(index_dir, "records.jsonl"), encoding="utf-8") as f:
             self.recs = [json.loads(l) for l in f]
+        self._by_id = {r["id"]: i for i, r in enumerate(self.recs)}
+        self._surahs = None
         self.db = sqlite3.connect(os.path.join(index_dir, "display.db"), check_same_thread=False)
         self.db.row_factory = sqlite3.Row
         self._lang = {}          # lang -> {"E","rows","bm25"}; built on first use
@@ -343,19 +365,62 @@ class Isnad:
                 out[dup_of].setdefault("variants", []).append(
                     {"id": rec["id"], "ref": rec["ref"], "grade": rec.get("grade")})
                 continue
-            r = dict(rec)
-            r.update(disp)
-            # The compiler's notes come off the text and travel beside it, so Jev judges, and the
-            # reader sees, the Prophet's words alone, and al-Tirmidhi's own grading is still shown.
-            if r.get("kind") == "hadith":
-                r["matn"], r["commentary"] = split_commentary(r.get("matn") or "")
-            r["score"] = float(scores[o])
-            r["matched_language"] = via[ri]
-            r["query_language"] = lang
-            r["wanted_kind"] = kind
-            r["variants"] = []
-            r["verify_url"] = (verify_url(plain(r.get("matn") or ""))
-                               if r["kind"] == "hadith" else None)
-            out.append(r)
+            out.append(self._full(ri, float(scores[o]), via[ri], lang, kind))
             kept_tokens.append(toks)
+        for pos, r in enumerate(out):
+            if r["kind"] != "hadith" or not r["variants"]:
+                continue
+            best = min([r["id"]] + [v["id"] for v in r["variants"]], key=_book_rank)
+            if _book_rank(best)[0] >= _book_rank(r["id"])[0]:
+                continue
+            new = self._full(self._by_id[best], r["score"], r["matched_language"], lang, kind)
+            new["variants"] = [{"id": r["id"], "ref": r["ref"], "grade": r.get("grade")}] + \
+                [v for v in r["variants"] if v["id"] != best]
+            out[pos] = new
         return out
+
+    def _full(self, ri, score, via_lang, lang, kind):
+        """A record as stage two and the reader get it: display text, the compiler's notes off
+        the matn, the dorar link."""
+        r = dict(self.recs[ri])
+        r.update(self.display(r["id"]))
+        # The compiler's notes come off the text and travel beside it, so Jev judges, and the
+        # reader sees, the Prophet's words alone, and al-Tirmidhi's own grading is still shown.
+        if r.get("kind") == "hadith":
+            r["matn"], r["commentary"] = split_commentary(r.get("matn") or "")
+        r["score"] = score
+        r["matched_language"] = via_lang
+        r["query_language"] = lang
+        r["wanted_kind"] = kind
+        r["variants"] = []
+        r["verify_url"] = (verify_url(plain(r.get("matn") or ""))
+                           if r["kind"] == "hadith" else None)
+        return r
+
+    # A SURAH NAMED ON ITS OWN ("سورة الإخلاص") is a lookup, not a search: the judges' battery got
+    # "nothing found" for it. Its verses come back in order; Jev is not asked.
+    SURAH_FILLER = {"اقرا", "ابي", "ابغي", "عطني", "اعطني", "هات", "وش", "ايش", "اعرض", "نص",
+                    "كامله", "كلها", "ابحث", "عن"}
+
+    def named_surah(self, query):
+        toks = normalize(query).split()
+        cue = next((t for t in toks if t in ("سوره", "السوره")), None)
+        if cue is None:
+            return None
+        if self._surahs is None:
+            self._surahs = defaultdict(list)       # normalized name -> record indexes in order
+            for i, r in enumerate(self.recs):
+                if r["kind"] == "ayah" and r.get("surah_name"):
+                    name = normalize(r["surah_name"])
+                    for key in {name, name[2:] if name.startswith("ال") else name}:
+                        self._surahs[key].append(i)
+        at = toks.index(cue)
+        after = toks[at + 1:]
+        for n in (2, 1):
+            key = " ".join(after[:n])
+            if len(after) >= n and key in self._surahs:
+                rest = toks[:at] + after[n:]
+                if all(t in self.SURAH_FILLER or t in REQUEST_WORDS for t in rest):
+                    idx = sorted(self._surahs[key], key=lambda i: self.recs[i]["ayah"])
+                    return [self._full(i, 1.0, "ar", "ar", "ayah") for i in idx]
+        return None

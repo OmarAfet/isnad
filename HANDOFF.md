@@ -116,5 +116,5 @@ Machine has 9 GB RAM: never run two embedding jobs at once.
 ## 8. Processes at this point
 
 Session-1 servers still run: API on :8000 (old code, PyTorch) and `next dev` on :3000. The
-isolated headless browser session `isnad-shots` (agent-browser `--auto-connect false`) was used
-for screenshots; close it with `agent-browser --auto-connect false --session isnad-shots close`.
+isolated headless browser session `isnad-shots` used for screenshots is closed. Copy review of
+the ruling state is done (two reviewers, two lines fixed, commit 24428d3).

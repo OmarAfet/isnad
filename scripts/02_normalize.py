@@ -16,6 +16,7 @@ from _arabic import clean_display, normalize, split_sanad_matn
 from _grades import (SEVERITY_ACTION, SEVERITY_AR, grader_ar, label as grade_label,
                      scope as grade_scope, severity as grade_severity)
 from _common import (CORPUS, HADITH_BOOKS, QURAN_EDITION, QURAN_MATCH_EDITION, RAW,
+                     muslim_citation,
                      dump, load, ran, say)
 from _surahs import surah_name, verses_count
 from _surfaces import load_hadith_surfaces, load_quran_surfaces
@@ -108,7 +109,14 @@ def build_hadith(key, hsurf):
         graders = [{"grader": g.get("name"), "grade": g.get("grade")}
                    for g in (h.get("grades") or []) if g.get("grade")]
 
-        if meta["grade_basis"] == "inherent":
+        ref = f"{meta['ar']} ({num})"
+        intro = False
+        if key == "muslim":
+            ref, intro = muslim_citation(num, h.get("arabicnumber"))
+        if intro:
+            grade_raw, grade_ar, note = "", "", "في مقدمة صحيح مسلم، وليست من أصل الصحيح"
+            basis, sev, scp = "none", "unknown", "hadith"
+        elif meta["grade_basis"] == "inherent":
             grade_raw, grade_ar = "Sahih", "صحيح"
             note = f"أخرجه {meta['short']} في صحيحه"
             basis, sev, scp = "inherent", "sahih", "hadith"
@@ -125,7 +133,7 @@ def build_hadith(key, hsurf):
             "arabic_number": h.get("arabicnumber"),
             "book": book_no,
             "section": sections.get(str(book_no)) or None,
-            "ref": f"{meta['ar']} ({num})",
+            "ref": ref,
             "text": clean_display(text),
             "sanad": clean_display(sanad),
             "matn": clean_display(matn),

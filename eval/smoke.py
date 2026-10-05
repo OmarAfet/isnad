@@ -29,6 +29,7 @@ WAIT = int(sys.argv[sys.argv.index("--wait") + 1]) if "--wait" in sys.argv else 
 # token limit (a topic query ran 108 s beside a browser search). The first run used 60 s and
 # failed a query the app had answered correctly.
 TIMEOUT = int(sys.argv[sys.argv.index("--timeout") + 1]) if "--timeout" in sys.argv else 300
+GAP = float(sys.argv[sys.argv.index("--gap") + 1]) if "--gap" in sys.argv else 0.0
 
 # (query, allowed verdicts, words the chosen text must contain, extra check)
 CASES = [
@@ -63,9 +64,15 @@ def call(q):
         headers["x-isnad-proxy"] = os.environ["ISNAD_PROXY_SECRET"]
     req = urllib.request.Request(f"{API}/api/search", data=json.dumps({"q": q}).encode(),
                                  headers=headers)
-    t = time.time()
-    with urllib.request.urlopen(req, timeout=TIMEOUT, context=CTX) as r:
-        return json.load(r), (time.time() - t) * 1000
+    for attempt in range(4):
+        t = time.time()
+        try:
+            with urllib.request.urlopen(req, timeout=TIMEOUT, context=CTX) as r:
+                return json.load(r), (time.time() - t) * 1000
+        except urllib.error.HTTPError as e:
+            if e.code != 429 or attempt == 3:
+                raise
+            time.sleep(20)      # the service allows 30 searches a minute per reader
 
 
 def main():
@@ -83,6 +90,7 @@ def main():
 
     passed, lat = 0, []
     for q, verdicts, words, extra in CASES:
+        time.sleep(GAP)
         try:
             d, ms = call(q)
         except Exception as e:

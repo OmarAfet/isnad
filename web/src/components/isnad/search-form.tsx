@@ -5,6 +5,7 @@ import { Languages, Loader2, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { copy } from "@/lib/copy";
+import { cn } from "@/lib/utils";
 
 export function SearchForm({
   initial,
@@ -50,7 +51,20 @@ export function SearchForm({
         rows={3}
         value={q}
         maxLength={300}
-        onChange={(e) => setQ(e.target.value)}
+        onChange={(e) => {
+          setQ(e.target.value);
+          // The "too short" warning goes as soon as it no longer applies; it used to stay on a
+          // 60-word description until the next search (judge-style test, 2026-10-06).
+          if (warn === copy.search.tooShort && e.target.value.trim().split(/\s+/).length >= 2) {
+            setWarn(null);
+          }
+        }}
+        onPaste={(e) => {
+          // The box holds 300 characters; a longer paste is cut, and the reader is told so.
+          const el = e.currentTarget;
+          const room = 300 - (q.length - ((el.selectionEnd ?? 0) - (el.selectionStart ?? 0)));
+          if (e.clipboardData.getData("text").length > room) setWarn(copy.search.tooLong);
+        }}
         onKeyDown={(e) => {
           // Enter searches; Shift+Enter adds a line for longer descriptions.
           if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
@@ -65,7 +79,13 @@ export function SearchForm({
       />
 
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <p id="q-hint" className="flex items-center gap-1.5 text-sm text-muted-foreground">
+        <p
+          id="q-hint"
+          className={cn(
+            "flex items-center gap-1.5 text-sm",
+            warn === copy.search.tooShort ? "text-destructive" : "text-muted-foreground",
+          )}
+        >
           <Languages className="size-4" />
           {warn ?? copy.search.hint}
         </p>

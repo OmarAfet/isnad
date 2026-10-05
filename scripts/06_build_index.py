@@ -22,6 +22,7 @@ import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from _common import CORPUS, LANG_NAME_AR, ROOT, ran, say
+from _arabic import join_open_tanween
 
 INDEX = os.path.join(ROOT, "data", "index")
 MODEL = "intfloat/multilingual-e5-base"
@@ -80,7 +81,10 @@ def main():
         id TEXT PRIMARY KEY, text TEXT, matn TEXT, sanad TEXT,
         graders TEXT, translations TEXT)""")
     con.executemany("INSERT INTO display VALUES (?,?,?,?,?,?)", [
-        (r["id"], r.get("text"), r.get("matn"), r.get("sanad"),
+        (r["id"],
+         join_open_tanween(r.get("text")) if r["id"].startswith("quran:") else r.get("text"),
+         join_open_tanween(r.get("matn")) if r["id"].startswith("quran:") else r.get("matn"),
+         r.get("sanad"),
          json.dumps(r.get("graders") or [], ensure_ascii=False),
          json.dumps(r.get("translations") or {}, ensure_ascii=False)) for r in recs])
     con.commit()

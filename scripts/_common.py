@@ -200,3 +200,23 @@ def normalize_ar(s):
     s = s.replace("ة", "ه")   # ة -> ه
     s = _PUNCT.sub(" ", s)
     return _WS.sub(" ", s).strip()
+
+
+# HOW SAHIH MUSLIM IS CITED. The hadith-api edition numbers Muslim with a running count
+# ("hadithnumber"); scholars, dorar.net and printed editions cite Muhammad Fu'ad Abd al-Baqi's
+# numbers, which the same file carries as "arabicnumber" ("35.02" = number 35, second chain).
+# Shown with the running count, "إماطة الأذى" was "صحيح مسلم (153)" and Hadith Jibril "(93)";
+# a reader checking dorar finds 35 and 8 (found by a judge-style test, 2026-10-06). The first 92
+# running numbers are the book's Introduction, which Abd al-Baqi does not number, and which is
+# not the Sahih proper: it is cited as such and gets no automatic "sahih".
+MUSLIM_INTRO_LAST = 92
+
+
+def muslim_citation(hadithnumber, arabicnumber):
+    """(ref, in_introduction) for a Sahih Muslim narration."""
+    if arabicnumber not in (None, ""):
+        return f"صحيح مسلم ({int(float(arabicnumber))})", False
+    if float(hadithnumber) <= MUSLIM_INTRO_LAST:
+        return "مقدمة صحيح مسلم", True
+    return f"صحيح مسلم ({hadithnumber})", False
+

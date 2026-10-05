@@ -27,9 +27,19 @@ const amiriQuran = Amiri_Quran({
   display: "swap",
 });
 
+// A shared link previews as what it is (judge-style test: a shared ?q= link had no preview).
+const DESCRIPTION = "صف ما تتذكره من آية أو حديث، واحصل على النص بلفظه ومصدره ودرجته.";
 export const metadata: Metadata = {
+  metadataBase: new URL("https://isnad-app.vercel.app"),
   title: "إسناد",
-  description: "صف ما تتذكره من آية أو حديث، واحصل على النص بلفظه ومصدره ودرجته.",
+  description: DESCRIPTION,
+  openGraph: {
+    title: "إسناد",
+    description: DESCRIPTION,
+    siteName: "إسناد",
+    locale: "ar_SA",
+    type: "website",
+  },
 };
 
 export const viewport: Viewport = {

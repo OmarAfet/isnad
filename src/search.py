@@ -24,7 +24,7 @@ import numpy as np
 HERE = os.path.dirname(os.path.abspath(__file__))
 INDEX = os.path.join(HERE, "..", "data", "index")
 sys.path.insert(0, os.path.join(HERE, "..", "scripts"))
-from _arabic import normalize, plain, split_commentary   # noqa: E402
+from _arabic import join_open_tanween, normalize, plain, split_commentary   # noqa: E402
 from _dorar import verify_url                 # noqa: E402
 from _lang import detect                      # noqa: E402
 from _surfaces import surface_text            # noqa: E402
@@ -66,6 +66,13 @@ LEX_CLEAN = True
 # al-Nasa'i 3794 while its family held al-Bukhari 54 and Muslim 4927; a reader checking the
 # citation, and a judge, expect the Sahihayn first.
 BOOK_RANK = {"bukhari": 0, "muslim": 1}
+
+# BOTH KINDS REACH STAGE TWO when the reader names neither. For "هل يجوز أفطر في رمضان إذا كنت
+# مسافر؟" dozens of hadith on fasting while travelling filled all 120 places, and 2:184-185, which
+# state the travel concession, never reached Jev (judge-style test, 2026-10-06). The best-ranked
+# texts of the missing kind replace the lowest-ranked of the other; topic lists, built from the
+# top 24, are unchanged.
+MIN_PER_KIND = 12
 
 
 def _book_rank(rid):
@@ -294,6 +301,10 @@ class Isnad:
         row = self.db.execute("SELECT * FROM display WHERE id=?", (rec_id,)).fetchone()
         if row is None:
             return {}
+        if rec_id.startswith("quran:"):
+            return {"text": join_open_tanween(row["text"]), "matn": join_open_tanween(row["matn"]),
+                    "sanad": row["sanad"], "graders": json.loads(row["graders"] or "[]"),
+                    "translations": json.loads(row["translations"] or "{}")}
         return {"text": row["text"], "matn": row["matn"], "sanad": row["sanad"],
                 "graders": json.loads(row["graders"] or "[]"),
                 "translations": json.loads(row["translations"] or "{}")}
@@ -358,7 +369,10 @@ class Isnad:
                 if rec["kind"] != "hadith" or out[pos]["kind"] != "hadith":
                     continue
                 d = min(len(toks), len(prev))
-                if d >= VARIANT_MIN_TOKENS and len(toks & prev) / d >= VARIANT_CONTAINMENT:
+                # Identical short texts are one report too: "الجار أحق بسقبه" (3 words) was listed
+                # twice, from al-Nasa'i and Ibn Majah, below the 6-word floor for near-copies.
+                if (d >= VARIANT_MIN_TOKENS and len(toks & prev) / d >= VARIANT_CONTAINMENT) or \
+                        (d >= 2 and toks == prev):
                     dup_of = pos
                     break
             if dup_of is not None:
@@ -367,6 +381,8 @@ class Isnad:
                 continue
             out.append(self._full(ri, float(scores[o]), via[ri], lang, kind))
             kept_tokens.append(toks)
+        if kind is None and k >= 2 * MIN_PER_KIND:
+            out = self._both_kinds(out, order, items, scores, via, lang, k)
         for pos, r in enumerate(out):
             if r["kind"] != "hadith" or not r["variants"]:
                 continue
@@ -378,6 +394,31 @@ class Isnad:
                 [v for v in r["variants"] if v["id"] != best]
             out[pos] = new
         return out
+
+    def _both_kinds(self, out, order, items, scores, via, lang, k):
+        """Keep MIN_PER_KIND texts of each kind in the shortlist, the best-ranked of each, in
+        place of the lowest-ranked texts of the other kind."""
+        have = {r["id"] for r in out} | {v["id"] for r in out for v in r["variants"]}
+        for want in ("ayah", "hadith"):
+            short = MIN_PER_KIND - sum(1 for r in out if r["kind"] == want)
+            if short <= 0:
+                continue
+            extra = []
+            for o in order:
+                ri = int(items[o])
+                rec = self.recs[ri]
+                if rec["kind"] == want and rec["id"] not in have:
+                    r = self._full(ri, float(scores[o]), via[ri], lang, None)
+                    r["reserve"] = True
+                    extra.append(r)
+                    have.add(rec["id"])
+                    if len(extra) >= short:
+                        break
+            if extra:
+                other = [i for i, r in enumerate(out) if r["kind"] != want]
+                drop = set(other[-len(extra):])
+                out = [r for i, r in enumerate(out) if i not in drop] + extra
+        return out[:k]
 
     def _full(self, ri, score, via_lang, lang, kind):
         """A record as stage two and the reader get it: display text, the compiler's notes off
@@ -395,6 +436,11 @@ class Isnad:
         r["variants"] = []
         r["verify_url"] = (verify_url(plain(r.get("matn") or ""))
                            if r["kind"] == "hadith" else None)
+        # The matching text: plain script for a verse, where the Uthmani display spells words
+        # differently ("وَٱخۡتِلَٰفُ" normalizes to "واختلف"), the normalized matn for a hadith.
+        ar = self.lang_index("ar")
+        pos = self._ar_pos.get(ri)
+        r["surface"] = ar["bm25_docs"][pos] if pos is not None else normalize(r.get("matn") or "")
         return r
 
     # A SURAH NAMED ON ITS OWN ("سورة الإخلاص") is a lookup, not a search: the judges' battery got

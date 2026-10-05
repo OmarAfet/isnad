@@ -72,6 +72,8 @@ export interface SearchResponse {
   alternatives: TextRecord[];
   topic?: TextRecord[];
   ruling?: RulingInfo | null;
+  // A surah named on its own ("سورة الإخلاص"): its verses, in order, looked up rather than judged.
+  surah?: { name: string; verses: number } | null;
   jev?: { rounds: number; net: number; groups: number };
   timing_ms: { search: number; decide: number | null; total: number };
   cached?: boolean;

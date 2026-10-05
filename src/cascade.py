@@ -32,6 +32,7 @@ sys.path.insert(0, os.path.join(HERE, "..", "scripts"))
 from decide import HIGH, LOW, NO_MATCH, load_key, message_ar   # noqa: E402
 from _arabic import normalize                                   # noqa: E402
 from _dorar import fiqh_url                                     # noqa: E402
+from search import REQUEST_WORDS, light_stem                    # noqa: E402
 
 # Family merge at decision time. Search already collapses near-identical copies of a report, but
 # its threshold is strict on purpose, because collapsing two DIFFERENT hadiths would hide one.
@@ -56,7 +57,8 @@ def _same_report(a, b):
         return False
     ta, tb = _tokens(a), _tokens(b)
     d = min(len(ta), len(tb))
-    return d >= FAMILY_MIN_TOKENS and len(ta & tb) / d >= FAMILY_CONTAINMENT
+    return (d >= FAMILY_MIN_TOKENS and len(ta & tb) / d >= FAMILY_CONTAINMENT) or \
+        (d >= 2 and ta == tb)
 
 MODEL = "jev-latest"
 NET = 120           # candidates taken from stage one
@@ -174,12 +176,38 @@ def _judge(template, c):
 # Authentic texts first: present the sound before the weak, as the framework's da'wah quality
 # standard asks. Weak and fabricated texts stay on the list, clearly graded, because knowing that
 # a saying people circulate is fabricated is itself what the reader needs.
-_GRADE_ORDER = {"quran": 0, "sahih": 0, "hasan": 0, "unknown": 1, "daif": 2, "mawdu": 2}
+# The Qur'an before the hadith: "يقدم الأصل قبل الفرع" (Reference Framework, da'wah quality).
+_GRADE_ORDER = {"quran": 0, "sahih": 1, "hasan": 1, "unknown": 2, "daif": 3, "mawdu": 3}
 
 SPECIFIC_INSTRUCTIONS = (
     "Does this description contain enough specific detail to identify one particular Qur'anic "
     "verse or hadith, as opposed to naming a broad topic?"
 )
+
+
+# A QUOTED SAYING MUST BE IN THE ANSWER. Asked "اختلاف أمتي رحمة" - a saying that is not a sound
+# hadith - Jev once answered 30:22 "واختلاف ألسنتكم وألوانكم" at 0.71, on the shared word. When
+# the query is a bare Arabic quotation (no "عن", "اللي", "يقول"...: those introduce a paraphrase),
+# at least half of its content words, light-stemmed, must be in the chosen text's own words, or
+# the answer is "not found". Measured (2026-10-06, 20 right answers): bare quotations 0.62-1.00;
+# the wrong ones 0.00-0.33. Paraphrases reach 0.40 and are not checked.
+QUOTE_MIN = 0.5
+DESCRIPTION_WORDS = {"عن", "اللي", "التي", "الذي", "فيها", "فيه", "يقول", "تقول", "يتكلم",
+                     "تتكلم", "معناه", "معني"}
+FUNCTION_WORDS = {"في", "من", "علي", "الي", "ان", "قال", "ما", "هو", "هي", "او", "ثم", "كل",
+                  "هذا", "هذه", "هذي", "ذلك", "له", "لها", "لهم", "به", "بها", "كان", "يا", "لا",
+                  "ولا", "لم", "لن", "قد", "حتي", "اذا", "و", "الا", "انه", "انها", "لما", "لي"}
+
+
+def _quote_ok(query, rec):
+    words = normalize(query).split()
+    if not words or any(w in DESCRIPTION_WORDS for w in words):
+        return True
+    content = [light_stem(w) for w in words if w not in REQUEST_WORDS and w not in FUNCTION_WORDS]
+    if not content:
+        return True
+    text = {light_stem(w) for w in (rec.get("surface") or normalize(rec.get("matn") or "")).split()}
+    return sum(1 for w in content if w in text) / len(content) >= QUOTE_MIN
 
 
 def _criteria(group):
@@ -236,7 +264,10 @@ async def run(query, candidates, client=None, net=NET, group=GROUP):
     """Return the decision. Needs an AsyncTypeSafeClient, or makes its own."""
     from typesafe_sdk import AsyncTypeSafeClient, Choice, Noul
 
-    cands = candidates[:net]
+    # Texts search held in reserve for the other kind (search.MIN_PER_KIND) serve ruling lists
+    # only. Offered to the single-text choice, they let Jev answer "اختلاف أمتي رحمة", a saying
+    # that is not a sound hadith, with 30:22 "واختلاف ألسنتكم" at full confidence.
+    cands = [c for c in candidates if not c.get("reserve")][:net]
     groups = _groups(cands, group)
     state = {"description": query}
 
@@ -271,7 +302,7 @@ async def run(query, candidates, client=None, net=NET, group=GROUP):
         if p_ruling >= RULING_THRESHOLD and (ruling_word or not names_kind):
             kind = ("personal" if ask.get("personal_case", 0.0) >= ask.get("general_ruling", 0.0)
                     else "general")
-            return await _ruling(client, query, cands, kind, p_ruling, specific, len(groups))
+            return await _ruling(client, query, candidates, kind, p_ruling, specific, len(groups))
         # A broad description goes to topic mode even when every group answered no_match: the
         # pick question asks for ONE text, and for "حديث عن الكذب" no single text is the one, so
         # all ten groups can rightly decline. Exiting here reported "nothing found" for a subject
@@ -318,6 +349,15 @@ async def run(query, candidates, client=None, net=NET, group=GROUP):
                     probabilities={(km[k]["id"] if k in km else k): v for k, v in probs.items()})
                 specific_answer["jev_confidence"] = conf
                 specific_answer["family"] = [km[k]["id"] for k in family]
+                # The reader named a kind and Jev, short of confident, picked the other kind:
+                # that is not an answer to the request. "أعطني حديثا يثبت أن الأرض مسطحة" - a
+                # Reference Framework test case - came back once with 88:20 as "tentative". A
+                # confident pick of the other kind is kept: "حديث لا إكراه في الدين" is a verse.
+                wanted = cands[0].get("wanted_kind") if cands else None
+                if wanted and rec.get("kind") != wanted and verdict != "confident":
+                    specific_answer = None
+                elif cands and cands[0].get("query_language") == "ar" and not _quote_ok(query, rec):
+                    specific_answer = None
 
         # A broad description that still pointed clearly at one text gets that text.
         if specific_answer and (specific_answer["verdict"] == "confident" or not topic_pool):
@@ -346,7 +386,15 @@ async def _ruling(client, query, cands, kind, p, specific, n_groups):
     """A ruling question: the texts that address the matter, sound before weak, and a referral.
     Never a ruling: the reader gets the sources' words and where to ask."""
     from typesafe_sdk import Noul
-    pool = _topic_pool(cands)
+    # Both kinds are judged: the evidence on a ruling starts with the Qur'an, and a pool ranked
+    # by score alone held 24 hadith for "هل يجوز أفطر في رمضان إذا كنت مسافر؟" while 2:184,
+    # which states the travel concession, sat lower (judge-style test, 2026-10-06).
+    if cands and cands[0].get("wanted_kind"):
+        pool = _topic_pool(cands)
+    else:
+        half = TOPIC_K // 2
+        pool = [c for c in cands if c.get("kind") == "ayah"][:half] + \
+            _topic_pool([c for c in cands if c.get("kind") == "hadith"])[:half]
     relevant = []
     if pool:
         questions = {f"t{i}": Noul(instructions=_judge(RULING_RELEVANCE_INSTRUCTIONS, c))

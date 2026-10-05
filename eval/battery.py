@@ -171,12 +171,16 @@ def call(api, q):
         h["x-isnad-proxy"] = os.environ["ISNAD_PROXY_SECRET"]
     req = urllib.request.Request(f"{api}/api/search", data=json.dumps({"q": q}).encode(),
                                  headers=h)
-    t = time.time()
-    try:
-        with urllib.request.urlopen(req, timeout=180, context=CTX) as r:
-            return json.load(r), (time.time() - t) * 1000
-    except urllib.error.HTTPError as e:
-        return {"verdict": f"HTTP {e.code}"}, (time.time() - t) * 1000
+    for attempt in range(4):
+        t = time.time()
+        try:
+            with urllib.request.urlopen(req, timeout=180, context=CTX) as r:
+                return json.load(r), (time.time() - t) * 1000
+        except urllib.error.HTTPError as e:
+            if e.code == 429 and attempt < 3:   # the service's per-minute limit: wait it out
+                time.sleep(20)
+                continue
+            return {"verdict": f"HTTP {e.code}"}, (time.time() - t) * 1000
 
 
 def main():

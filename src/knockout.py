@@ -34,7 +34,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 sys.path.insert(0, os.path.join(HERE, "..", "scripts"))
 
-from _arabic import normalize, plain, split_commentary     # noqa: E402
+from _arabic import join_open_tanween, normalize, plain, split_commentary  # noqa: E402
 from _dorar import verify_url                              # noqa: E402
 from cascade import (FATWA_INSTRUCTIONS, FATWA_THRESHOLD, HIGH, LOW, MAX_CAND_CHARS,  # noqa: E402
                      NO_MATCH, NO_MATCH_DESC, PICK_INSTRUCTIONS, RELEVANCE_INSTRUCTIONS,
@@ -100,7 +100,8 @@ class Corpus:
     def __init__(self, ix):
         self.ix = ix
         recs = ix.recs
-        matn = {row[0]: row[1] for row in ix.db.execute("SELECT id, matn FROM display")}
+        matn = {row[0]: (join_open_tanween(row[1]) if row[0].startswith("quran:") else row[1])
+                for row in ix.db.execute("SELECT id, matn FROM display")}
         seen = {}
         self.items = []
         for ri, r in enumerate(recs):

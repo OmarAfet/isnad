@@ -33,6 +33,7 @@ export function IsnadApp() {
   const router = useRouter();
   const params = useSearchParams();
   const urlQ = params.get("q") ?? "";
+  const urlId = params.get("id");
   const [state, setState] = useState<State>({ status: "idle" });
   const ran = useRef<string | null>(null);
   const results = useRef<HTMLDivElement>(null);
@@ -118,9 +119,11 @@ export function IsnadApp() {
     if (urlQ && ran.current !== urlQ) void run(urlQ);
   }, [urlQ, run]);
 
+  // Every search and every opened card is a history entry, so Back returns to the list or the
+  // search before; replacing the entry, as before, lost them (judge-style test, 2026-10-06).
   const onSearch = (q: string) => {
     const sp = new URLSearchParams({ q });
-    router.replace(`/?${sp.toString()}`, { scroll: false });
+    router.push(`/?${sp.toString()}`, { scroll: false });
     if (q === urlQ) void run(q);
   };
 
@@ -144,7 +147,16 @@ export function IsnadApp() {
             <AlertDescription>{state.message}</AlertDescription>
           </Alert>
         )}
-        {state.status === "done" && <ResultView data={state.data} onPick={onSearch} />}
+        {state.status === "done" && (
+          <ResultView
+            data={state.data}
+            picked={urlId}
+            onOpen={(id) =>
+              router.push(`/?${new URLSearchParams({ q: urlQ, id }).toString()}`, { scroll: false })
+            }
+            onBack={() => router.push(`/?${new URLSearchParams({ q: urlQ }).toString()}`, { scroll: false })}
+          />
+        )}
       </div>
     </div>
   );
@@ -176,9 +188,16 @@ function ReadingProgress({ progress }: { progress?: Progress }) {
 }
 
 function LoadingChain({ q, progress }: { q: string; progress?: Progress }) {
+  // After 3 s the reader is told why: a cold start, not a hang (5 of 25 judge searches took 6-9 s).
+  const [slow, setSlow] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => setSlow(true), 3000);
+    return () => clearTimeout(t);
+  }, []);
   return (
     <>
     <ReadingProgress progress={progress} />
+    {slow && <p className="mb-4 text-sm text-muted-foreground" role="status">{copy.search.slow}</p>}
     <ol className="relative" aria-busy="true" aria-label={copy.search.submitting}>
       <li className="relative ps-8 pb-7">
         <span aria-hidden className="absolute start-[0.4375rem] top-4 bottom-0 w-px bg-chain" />

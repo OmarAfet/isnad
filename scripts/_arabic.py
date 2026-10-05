@@ -57,6 +57,20 @@ _WS = re.compile(r"\s+")
 _PUNCT = re.compile(r"[^ء-ي٠-٩a-zA-Z0-9\s]")
 
 
+# THE ONE CORRECTION MADE TO THE QUR'AN'S TEXT. The quran-api Uthmani edition used for display
+# (ara-quranuthmanihaf) puts a space between an open tanween (U+08F0) and the alif or alef maksura
+# that ends the same word: "صَبۡرࣰ ا" for "صَبۡرࣰا" (70:5), "هُدࣰ ى" for "هُدࣰى" (2:2). Found by
+# a judge-style test on 2026-10-06; the space is in the source file itself, in about a quarter
+# of the verses. quran.com's Uthmani text writes these words whole ("صَبْرًا"). Only that space
+# goes, and only where what follows it is that lone letter with its marks ("بَلَٰٓؤࣱاْ", 44:33); a space after
+# an open tanween that ends a word ("بِنَآءࣰ وَأَنزَلَ") is a real word boundary and stays.
+_OPEN_TANWEEN_SPLIT = re.compile(r"([\u08F0-\u08F2]) ([\u0627\u0649][\u064B-\u065F\u0670\u06D6-\u06ED]*)(?=\s|$)")
+
+
+def join_open_tanween(s):
+    return _OPEN_TANWEEN_SPLIT.sub(r"\1\2", s or "")
+
+
 def normalize(s):
     """Full normalization for matching and embedding. Offsets are NOT preserved."""
     stripped, _ = strip_with_map(s or "")
@@ -194,13 +208,15 @@ def plain(s):
 # "هذا حديث حسن" is his own grading, so it is split off and shown separately.
 #
 # Only unambiguous markers cut. Measured over 34,153 matns: قال أبو عيسى ends 2,955 of them, and
-# Abu Isa is al-Tirmidhi; قال أبو داود (762), قال أبو عبد الرحمن (al-Nasa'i, 167), وفي الباب عن
+# After a closing quote, al-Tirmidhi's "وهو قول الثوري ..." and "والعمل على هذا عند أهل العلم" are
+# his comments too; Tirmidhi 1370 showed "وهو قول الثوري وابن المبارك وأهل الكوفة" as the Prophet's
+# words under a "صحيح" badge (judge-style test, 2026-10-06). Abu Isa is al-Tirmidhi; قال أبو داود (762), قال أبو عبد الرحمن (al-Nasa'i, 167), وفي الباب عن
 # (1,150). Cutting at the first closing quote was rejected: it would truncate dialogue hadith such
 # as the revelation narrative, "ما أنا بقارئ". قال "فأخذني...
 _COMMENTARY = re.compile(
     r"(?:قال\s+ابو\s+عيسي|(?:قال\s+)?وفي\s+الباب\s+عن|قال\s+ابو\s+داود"
     r"|قال\s+ابو\s+عبد\s+الرحمن|وفي\s+الحديث\s+قصه"
-    r"|(?<=[\".])\s*(?:وفي\s+حديث|وفي\s+روايه)"
+    r"|(?<=[\".])\s*(?:وفي\s+حديث|وفي\s+روايه|وهو\s+قول|والعمل\s+علي\s+هذا|وبه\s+يقول)"
     r"|\"\s*\.?\s*(?=(?:و?حدثنا|و?اخبرنا|و?حدثني)\b))"
 )
 # A new chain after a full stop ("... . حدثنا بندار") is usually the next isnad, but "حدثنا" also

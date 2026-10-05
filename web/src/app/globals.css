@@ -1,0 +1,103 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  /* Not var(--font-sans): that is a self-reference and resolves to nothing. These names are set
+     on <html> by next/font in layout.tsx and read at runtime. */
+  --font-sans: var(--font-readex), ui-sans-serif, system-ui, sans-serif;
+  --font-heading: var(--font-readex), ui-sans-serif, system-ui, sans-serif;
+  --font-scripture: var(--font-amiri), "Amiri", serif;
+  --font-quran: var(--font-amiri-quran), var(--font-amiri), "Amiri Quran", serif;
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+
+  /* Grades. Each pair measured against WCAG AA: the tightest is sahih at 4.68:1. */
+  --color-sahih: #1f7a4d;
+  --color-sahih-tint: #e5f4ec;
+  --color-daif: #8a5300;
+  --color-daif-tint: #fff3d6;
+  --color-mawdu: #b42318;
+  --color-mawdu-tint: #fdecea;
+  --color-unknown: #4a5280;
+  --color-unknown-tint: #eef0f8;
+  --color-chain: #c9cdea;
+
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+}
+
+/* The challenge's own identity: navy ink on cool paper, purple for anything you can act on.
+   Light only. This is a reading product, and scripture is read on a light page. */
+:root {
+  --background: #f2f4ff;
+  --foreground: #12183f;
+  --card: #ffffff;
+  --card-foreground: #12183f;
+  --popover: #ffffff;
+  --popover-foreground: #12183f;
+  --primary: #6150ea;
+  --primary-foreground: #ffffff;
+  --secondary: #e6e9f7;
+  --secondary-foreground: #12183f;
+  --muted: #e6e9f7;
+  --muted-foreground: #4a5280;
+  --accent: #eceafd;
+  --accent-foreground: #12183f;
+  --destructive: #b42318;
+  --border: #d9ddf0;
+  --input: #c9cdea;
+  --ring: #6150ea;
+  --radius: 0.75rem;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+  body {
+    @apply bg-background text-foreground font-sans;
+    line-height: 1.7;
+  }
+  /* Scripture is set apart from the tool's own voice, which is the framework's rule made
+     visible: distinguish the shari text from generated explanation. */
+  .scripture {
+    font-family: var(--font-scripture);
+    line-height: 2.1;
+    font-feature-settings: "calt", "liga";
+  }
+  .quran {
+    font-family: var(--font-quran);
+    line-height: 2.3;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}

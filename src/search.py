@@ -130,6 +130,11 @@ class Isnad:
             import torch
             dev = self._device or ("mps" if torch.backends.mps.is_available() else "cpu")
             self._model = SentenceTransformer(self.meta["model"], device=dev)
+            # Half precision on a GPU: one short query per request, so the saving is memory, not
+            # time, and memory is what a small host runs out of first.
+            if dev != "cpu":
+                self._model.half()
+            self._model.max_seq_length = 256
         return self._model
 
     def lang_index(self, lg):
@@ -215,6 +220,12 @@ class Isnad:
             toks = set(_match_tokens(self, ri))
             dup_of = None
             for pos, prev in enumerate(kept_tokens):
+                # Only hadith collapse into hadith. A narration that quotes an ayah shares its
+                # wording almost exactly, and collapsing on wording alone folded 2:255 into Abu
+                # Dawud 4003 - the Qur'an filed as a "variant" of a report that cites it. The
+                # ayah is the primary source and always stands on its own.
+                if rec["kind"] != "hadith" or out[pos]["kind"] != "hadith":
+                    continue
                 d = min(len(toks), len(prev))
                 if d >= VARIANT_MIN_TOKENS and len(toks & prev) / d >= VARIANT_CONTAINMENT:
                     dup_of = pos

@@ -1,0 +1,66 @@
+// Mirrors api/app.py. Field names are a contract: the API returns codes, the web app owns copy.
+
+export type Verdict =
+  | "confident"
+  | "tentative"
+  | "unsure"
+  | "no_match"
+  | "fatwa_request"
+  | "decision_unavailable";
+
+export type Severity = "sahih" | "hasan" | "daif" | "mawdu" | "unknown" | "quran";
+
+export interface Grader {
+  grader: string;
+  grade: string;
+}
+
+export interface Variant {
+  id: string;
+  ref: string;
+  grade: string | null;
+}
+
+export interface Translation {
+  lang: string;
+  text: string;
+  translator: string | null;
+  edition: string | null;
+}
+
+export interface TextRecord {
+  id: string;
+  kind: "ayah" | "hadith";
+  ref: string;
+  collection: string | null;
+  surah_name: string | null;
+  ayah: number | null;
+  number: number | string | null;
+  matn: string;
+  sanad: string | null;
+  grade: string | null;
+  grade_basis: "quran" | "inherent" | "cited" | "none" | null;
+  severity: Severity | null;
+  action: string | null;
+  scope: string | null;
+  graders: Grader[];
+  variants: Variant[];
+  translation: Translation | null;
+  matched_language: string | null;
+  verify_url: string | null;
+  probability?: number;
+}
+
+export interface SearchResponse {
+  query: string;
+  query_language: string | null;
+  verdict: Verdict;
+  confidence: number | null;
+  specific_enough: number | null;
+  result: TextRecord | null;
+  alternatives: TextRecord[];
+  jev?: { rounds: number; net: number; groups: number };
+  timing_ms: { search: number; decide: number | null; total: number };
+  cached?: boolean;
+  error?: string;
+}

@@ -63,6 +63,8 @@ def main():
     os.makedirs(INDEX, exist_ok=True)
 
     # --- slim records, in corpus order; row -> record index is what the matrices store ---
+    # Row indices in every rows_*.npy point into THIS file, so it must be rebuilt whenever the
+    # corpus changes. It is cheap, so it always is.
     with open(os.path.join(INDEX, "records.jsonl"), "w", encoding="utf-8") as f:
         for r in recs:
             f.write(json.dumps({k: r.get(k) for k in SLIM}, ensure_ascii=False) + "\n")
@@ -92,10 +94,18 @@ def main():
     dev = "mps" if torch.backends.mps.is_available() else "cpu"
     say(f"  model: {MODEL} on {dev}\n")
     m = SentenceTransformer(MODEL, device=dev)
-    dim = m.get_sentence_embedding_dimension()
+    dim = m.get_embedding_dimension() if hasattr(m, "get_embedding_dimension") \
+        else m.get_sentence_embedding_dimension()
 
     built = {}
+    force = "--force" in sys.argv
     for lg in sorted(langs, key=lambda k: (k != "ar", k)):
+        if not force and os.path.exists(os.path.join(INDEX, f"emb_{lg}.f16.npy")) \
+                and os.path.exists(os.path.join(INDEX, f"rows_{lg}.npy")):
+            n = len(np.load(os.path.join(INDEX, f"rows_{lg}.npy")))
+            built[lg] = n
+            say(f"    {lg}: {n:6d} rows  already embedded, skipped (--force to redo)")
+            continue
         rows, texts = [], []
         for i, r in enumerate(recs):
             t = r["match_text"] if lg == "ar" else (r.get("surfaces") or {}).get(lg)
@@ -119,7 +129,10 @@ def main():
     json.dump({"model": MODEL, "dim": dim, "records": len(recs),
                "doc_prefix": DOC_PREFIX, "query_prefix": QUERY_PREFIX,
                "max_chars": MAX_CHARS, "dtype": "float16", "device": dev,
-               "languages": built, "lang_name_ar": LANG_NAME_AR,
+               "languages": {lg: int(len(np.load(os.path.join(INDEX, f)))) for f in
+                             sorted(os.listdir(INDEX)) if f.startswith("rows_")
+                             for lg in [f[5:-4]]},
+               "lang_name_ar": LANG_NAME_AR,
                "built": time.strftime("%Y-%m-%dT%H:%M:%S")},
               open(os.path.join(INDEX, "meta.json"), "w"), ensure_ascii=False, indent=1)
     total = sum(os.path.getsize(os.path.join(INDEX, f)) for f in os.listdir(INDEX))

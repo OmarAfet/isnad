@@ -1,0 +1,262 @@
+{
+ "quran": {
+  "en": {
+   "edition": "eng-muhammadtaqiudd",
+   "author": "Muhammad Taqi Ud Din Al Hilali And Muhammad Muhsin Khan",
+   "source": "http://tanzil.net"
+  },
+  "id": {
+   "edition": "ind-kingfahdcomplex",
+   "author": "King Fahd Complex",
+   "source": "https://quranenc.com/check/indonesian_complex/v1.0.0-csv.1 , https://quranenc.com/en/browse/indonesian_complex , https://quranenc.com ,"
+  },
+  "ur": {
+   "edition": "urd-abulaalamaududi",
+   "author": "Abul A Ala Maududi",
+   "source": "http://tanzil.net"
+  },
+  "tr": {
+   "edition": "tur-abdulbakigolpin",
+   "author": "Abdulbaki Golpinarli",
+   "source": "http://tanzil.net"
+  },
+  "bn": {
+   "edition": "ben-abubakrzakaria",
+   "author": "Abu Bakr Zakaria",
+   "source": "https://qurancomplex.gov.sa/"
+  },
+  "fr": {
+   "edition": "fra-islamicfoundati",
+   "author": "Islamic Foundation",
+   "source": "https://quranenc.com/check/french_montada/v1.0.0-csv.1 , https://quranenc.com/en/browse/french_montada , https://quranenc.com ,"
+  },
+  "ru": {
+   "edition": "rus-abuadel",
+   "author": "Abu Adel",
+   "source": "http://tanzil.net"
+  },
+  "ta": {
+   "edition": "tam-abdulhameedbaqa",
+   "author": "Abdulhameed Baqavi",
+   "source": "https://quranenc.com/check/tamil_baqavi/v1.0.0-csv.1 , https://quranenc.com/en/browse/tamil_baqavi , https://quranenc.com ,"
+  }
+ },
+ "hadith": {
+  "en": {
+   "bukhari": {
+    "edition": "eng-bukhari",
+    "author": "Muhsin Khan",
+    "source": ""
+   },
+   "muslim": {
+    "edition": "eng-muslim",
+    "author": "Abdul Hamid Siddiqui",
+    "source": ""
+   },
+   "abudawud": {
+    "edition": "eng-abudawud",
+    "author": "Unknown",
+    "source": ""
+   },
+   "tirmidhi": {
+    "edition": "eng-tirmidhi",
+    "author": "Unknown",
+    "source": ""
+   },
+   "nasai": {
+    "edition": "eng-nasai",
+    "author": "Unknown",
+    "source": ""
+   },
+   "ibnmajah": {
+    "edition": "eng-ibnmajah",
+    "author": "Unknown",
+    "source": ""
+   }
+  },
+  "bn": {
+   "bukhari": {
+    "edition": "ben-bukhari",
+    "author": "Unknown",
+    "source": ""
+   },
+   "muslim": {
+    "edition": "ben-muslim",
+    "author": "Unknown",
+    "source": ""
+   },
+   "abudawud": {
+    "edition": "ben-abudawud",
+    "author": "Unknown",
+    "source": ""
+   },
+   "tirmidhi": {
+    "edition": "ben-tirmidhi",
+    "author": "Unknown",
+    "source": ""
+   },
+   "nasai": {
+    "edition": "ben-nasai",
+    "author": "Unknown",
+    "source": ""
+   },
+   "ibnmajah": {
+    "edition": "ben-ibnmajah",
+    "author": "Unknown",
+    "source": ""
+   }
+  },
+  "fr": {
+   "bukhari": {
+    "edition": "fra-bukhari",
+    "author": "Unknown",
+    "source": ""
+   },
+   "muslim": {
+    "edition": "fra-muslim",
+    "author": "Unknown",
+    "source": ""
+   },
+   "abudawud": {
+    "edition": "fra-abudawud",
+    "author": "Unknown",
+    "source": ""
+   },
+   "nasai": {
+    "edition": "fra-nasai",
+    "author": "Unknown",
+    "source": ""
+   },
+   "ibnmajah": {
+    "edition": "fra-ibnmajah",
+    "author": "Unknown",
+    "source": ""
+   }
+  },
+  "id": {
+   "bukhari": {
+    "edition": "ind-bukhari",
+    "author": "Unknown",
+    "source": ""
+   },
+   "muslim": {
+    "edition": "ind-muslim",
+    "author": "Unknown",
+    "source": ""
+   },
+   "abudawud": {
+    "edition": "ind-abudawud",
+    "author": "Unknown",
+    "source": ""
+   },
+   "tirmidhi": {
+    "edition": "ind-tirmidhi",
+    "author": "Unknown",
+    "source": ""
+   },
+   "nasai": {
+    "edition": "ind-nasai",
+    "author": "Unknown",
+    "source": ""
+   },
+   "ibnmajah": {
+    "edition": "ind-ibnmajah",
+    "author": "Unknown",
+    "source": ""
+   }
+  },
+  "ru": {
+   "bukhari": {
+    "edition": "rus-bukhari",
+    "author": "Abdullah Nirsha And Editors Of Daura.com",
+    "source": "https://isnad.link/book/sahih-al-buhari"
+   },
+   "muslim": {
+    "edition": "rus-muslim",
+    "author": "Unknown",
+    "source": "https://isnad.link/"
+   },
+   "abudawud": {
+    "edition": "rus-abudawud",
+    "author": "Unknown",
+    "source": "https://isnad.link/"
+   }
+  },
+  "ta": {
+   "bukhari": {
+    "edition": "tam-bukhari",
+    "author": "Unknown",
+    "source": ""
+   },
+   "muslim": {
+    "edition": "tam-muslim",
+    "author": "Unknown",
+    "source": ""
+   }
+  },
+  "tr": {
+   "bukhari": {
+    "edition": "tur-bukhari",
+    "author": "Unknown",
+    "source": ""
+   },
+   "muslim": {
+    "edition": "tur-muslim",
+    "author": "Unknown",
+    "source": ""
+   },
+   "abudawud": {
+    "edition": "tur-abudawud",
+    "author": "Unknown",
+    "source": ""
+   },
+   "tirmidhi": {
+    "edition": "tur-tirmidhi",
+    "author": "Unknown",
+    "source": ""
+   },
+   "nasai": {
+    "edition": "tur-nasai",
+    "author": "Unknown",
+    "source": ""
+   },
+   "ibnmajah": {
+    "edition": "tur-ibnmajah",
+    "author": "Unknown",
+    "source": ""
+   }
+  },
+  "ur": {
+   "bukhari": {
+    "edition": "urd-bukhari",
+    "author": "Unknown",
+    "source": ""
+   },
+   "muslim": {
+    "edition": "urd-muslim",
+    "author": "Unknown",
+    "source": ""
+   },
+   "abudawud": {
+    "edition": "urd-abudawud",
+    "author": "Unknown",
+    "source": ""
+   },
+   "tirmidhi": {
+    "edition": "urd-tirmidhi",
+    "author": "Unknown",
+    "source": ""
+   },
+   "nasai": {
+    "edition": "urd-nasai",
+    "author": "Unknown",
+    "source": ""
+   },
+   "ibnmajah": {
+    "edition": "urd-ibnmajah",
+    "author": "Unknown",
+    "source": ""
+   }
+  }
+ }
+}

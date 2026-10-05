@@ -1,7 +1,7 @@
 // Streams the backend's Server-Sent Events straight through. In full-corpus mode Jev reads every
 // text, which takes about forty seconds, and the reader is owed the sight of it working: each
 // event says how many texts have been read so far.
-const API = process.env.ISNAD_API_URL ?? "http://localhost:8000";
+import { API, upstreamHeaders } from "@/lib/upstream";
 
 export const dynamic = "force-dynamic";
 
@@ -23,7 +23,7 @@ export async function POST(req: Request) {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "x-forwarded-for": req.headers.get("x-forwarded-for") ?? "",
+        ...upstreamHeaders(req),
       },
       body: JSON.stringify({ q }),
       cache: "no-store",

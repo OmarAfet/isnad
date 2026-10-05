@@ -6,3 +6,5 @@ __pycache__/
 .env
 data/dorar/harvest.json
 data/index/
+data/models/
+deploy/

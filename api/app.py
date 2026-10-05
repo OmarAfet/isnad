@@ -10,6 +10,7 @@ action) so that all interface copy sits in one place, in one register, and is re
 Run: uvicorn api.app:app --port 8000   (from the isnad/ directory)
 """
 import asyncio
+import hmac
 import json
 import os
 import sys
@@ -47,7 +48,15 @@ ALT_MIN_PROB = 0.05
 # (Muslim 4, Bukhari 2682, Bukhari 2459 for "حديث عن الكذب").
 MODE = os.environ.get("ISNAD_MODE", "net")
 CACHE_VERSION = "2026-10-05.knockout-1"   # bump when behaviour changes, so stale answers die
-CACHE_FILE = os.path.join(ROOT, "data", "cache", f"answers-{MODE}.json")
+# Test runs point ISNAD_CACHE_FILE at /tmp, so they do not overwrite the saved answers in git.
+CACHE_FILE = (os.environ.get("ISNAD_CACHE_FILE")
+              or os.path.join(ROOT, "data", "cache", f"answers-{MODE}.json"))
+
+# Every search spends the paid Jev key, and once deployed this service has a public address. When
+# ISNAD_PROXY_SECRET is set, only a caller that presents it - the web tier - is served. Behind that
+# proxy the connecting address is the proxy's own, so the proxy forwards the reader's address in
+# x-isnad-client-ip, and that is the address the per-minute limit applies to.
+PROXY_SECRET = os.environ.get("ISNAD_PROXY_SECRET") or None
 
 STATE = {}
 
@@ -100,6 +109,18 @@ app.add_middleware(
 
 class SearchIn(BaseModel):
     q: str = Field(..., min_length=MIN_QUERY_CHARS, max_length=MAX_QUERY_CHARS)
+
+
+def _client(request):
+    """The reader's address for the rate limit; 403 if a proxy secret is set and not presented."""
+    if PROXY_SECRET:
+        if not hmac.compare_digest(request.headers.get("x-isnad-proxy", ""), PROXY_SECRET):
+            raise HTTPException(403, "forbidden")
+        fwd = request.headers.get("x-isnad-client-ip")
+        if fwd:
+            return fwd.split(",")[0].strip()
+    peer = request.client.host if request.client else "unknown"
+    return (request.headers.get("x-forwarded-for") or peer).split(",")[0].strip()
 
 
 def _limited(ip):
@@ -171,6 +192,7 @@ async def health():
     return {"ok": ix is not None, "records": len(ix.recs) if ix else 0,
             "languages": sorted(ix.meta.get("languages", {})) if ix else [],
             "model": ix.meta.get("model") if ix else None,
+            "encoder": ix.encoder if ix else None,
             "decision_model": cascade.MODEL, "mode": MODE,
             "texts_jev_reads": len(STATE["corpus"].items) if STATE.get("corpus") else cascade.NET,
             "cached_answers": len(STATE.get("cache") or {}),
@@ -182,7 +204,7 @@ async def search(body: SearchIn, request: Request):
     q = " ".join(body.q.split())
     if len(q) < MIN_QUERY_CHARS:
         raise HTTPException(422, "query too short")
-    ip = (request.headers.get("x-forwarded-for") or request.client.host).split(",")[0].strip()
+    ip = _client(request)
     if _limited(ip):
         raise HTTPException(429, "rate limited")
 
@@ -302,7 +324,7 @@ async def search_stream(body: SearchIn, request: Request):
     """Same answer as /api/search, as Server-Sent Events: progress while Jev reads every text,
     then the result. A ~40 second read is only acceptable if the reader can see it working."""
     q = " ".join(body.q.split())
-    ip = (request.headers.get("x-forwarded-for") or request.client.host).split(",")[0].strip()
+    ip = _client(request)
     if _limited(ip):
         raise HTTPException(429, "rate limited")
 

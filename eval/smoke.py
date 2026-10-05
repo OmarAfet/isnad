@@ -7,12 +7,20 @@ because the same report sits in several collections and any copy is a correct an
 
 Usage: python eval/smoke.py [--api http://127.0.0.1:8000] [--wait 120]
 """
-import json, sys, time, urllib.request
+import json, os, ssl, sys, time, urllib.request
 sys.path.insert(0, __import__("os").path.join(__import__("os").path.dirname(
     __import__("os").path.abspath(__file__)), "..", "scripts"))
 from _arabic import normalize
 
 API = "http://127.0.0.1:8000"
+# python.org builds on macOS ship without root certificates; certifi's bundle makes HTTPS work
+# against the deployed service (without it every request failed CERTIFICATE_VERIFY_FAILED, and
+# the health wait reported the API as unreachable).
+try:
+    import certifi
+    CTX = ssl.create_default_context(cafile=certifi.where())
+except ImportError:
+    CTX = None
 for i, a in enumerate(sys.argv):
     if a == "--api":
         API = sys.argv[i + 1]
@@ -41,10 +49,13 @@ CASES = [
 
 
 def call(q):
+    headers = {"Content-Type": "application/json"}
+    if os.environ.get("ISNAD_PROXY_SECRET"):       # a deployed service serves only its proxy
+        headers["x-isnad-proxy"] = os.environ["ISNAD_PROXY_SECRET"]
     req = urllib.request.Request(f"{API}/api/search", data=json.dumps({"q": q}).encode(),
-                                 headers={"Content-Type": "application/json"})
+                                 headers=headers)
     t = time.time()
-    with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
+    with urllib.request.urlopen(req, timeout=TIMEOUT, context=CTX) as r:
         return json.load(r), (time.time() - t) * 1000
 
 
@@ -53,7 +64,7 @@ def main():
     t0 = time.time()
     while True:
         try:
-            urllib.request.urlopen(f"{API}/api/health", timeout=5)
+            urllib.request.urlopen(f"{API}/api/health", timeout=30, context=CTX)
             break
         except Exception:
             if time.time() - t0 > WAIT:

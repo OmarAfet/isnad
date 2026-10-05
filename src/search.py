@@ -54,6 +54,40 @@ KIND_BOOST = 0.10
 VARIANT_CONTAINMENT = 0.80
 VARIANT_MIN_TOKENS = 6
 
+# QUERY ENCODER. The index was embedded once, in PyTorch, with multilingual-e5-base. Serving only
+# encodes the query - one short text per search - yet PyTorch and the float32 model held 1.1 GB of
+# the 2.0 GB the service peaked at (eval/measure_memory.py), and the free host allows 2 GB in all.
+# The model's author publishes an int8 ONNX export of the same weights in the same repository
+# (intfloat/multilingual-e5-base, onnx/model_qint8_avx512_vnni.onnx, 279 MB), which ONNX Runtime
+# runs without PyTorch. Agreement with the PyTorch encoder is measured: eval/compare_encoders.py.
+ENCODER = os.environ.get("ISNAD_ENCODER", "torch")
+ONNX_DIR = os.environ.get("ISNAD_ONNX_DIR",
+                          os.path.join(HERE, "..", "data", "models", "e5-base-onnx", "onnx"))
+ONNX_FILE = "model_qint8_avx512_vnni.onnx"
+ONNX_REPO, ONNX_REVISION = "intfloat/multilingual-e5-base", "d128750597153bb5987e10b1c3493a34e5a4502a"
+
+
+class OnnxEncoder:
+    """What sentence-transformers computes for this model - mean pooling over the attention mask
+    (the model's 1_Pooling/config.json), then L2 normalisation - from ONNX Runtime instead."""
+
+    def __init__(self, model_dir=ONNX_DIR, max_len=256):
+        import onnxruntime as ort
+        from tokenizers import Tokenizer
+        self.sess = ort.InferenceSession(os.path.join(model_dir, ONNX_FILE),
+                                         providers=["CPUExecutionProvider"])
+        self.tok = Tokenizer.from_file(os.path.join(model_dir, "tokenizer.json"))
+        self.tok.enable_truncation(max_length=max_len)   # the PyTorch path's max_seq_length
+        self.tok.no_padding()
+
+    def encode(self, text):
+        e = self.tok.encode(text)
+        ids = np.array([e.ids], dtype=np.int64)
+        mask = np.array([e.attention_mask], dtype=np.int64)
+        h = self.sess.run(["last_hidden_state"], {"input_ids": ids, "attention_mask": mask})[0]
+        v = (h * mask[..., None]).sum(axis=1)[0] / mask.sum()
+        return (v / np.linalg.norm(v)).astype(np.float32)
+
 
 class Bm25:
     def __init__(self, docs, k1=1.5, b=0.75):
@@ -80,6 +114,16 @@ class Bm25:
                 s[i] += idf * c * (self.k1 + 1) / (
                     c + self.k1 * (1 - self.b + self.b * self.dl[i] / self.avgdl))
         return s
+
+
+def _dense(E, qv, rows=8192):
+    """Cosine of the query against a float16 matrix, a slice at a time. Converting the whole
+    matrix to float32 at once made a 124 MB temporary per language per search, on a host whose
+    whole allowance is 2 GB; a slice of 8,192 rows makes 25 MB and the result is the same."""
+    out = np.empty(E.shape[0], dtype=np.float32)
+    for i in range(0, E.shape[0], rows):
+        out[i:i + rows] = E[i:i + rows].astype(np.float32) @ qv
+    return out
 
 
 def _zscore(x):
@@ -109,7 +153,7 @@ def _match_tokens(ix, rec_index):
 
 
 class Isnad:
-    def __init__(self, index_dir=INDEX, device=None):
+    def __init__(self, index_dir=INDEX, device=None, encoder=None):
         self.dir = index_dir
         self.meta = json.load(open(os.path.join(index_dir, "meta.json"), encoding="utf-8"))
         with open(os.path.join(index_dir, "records.jsonl"), encoding="utf-8") as f:
@@ -121,6 +165,8 @@ class Isnad:
         self._ar_pos = {}        # record index -> row position in the Arabic surface
         self._model = None
         self._device = device
+        self.encoder = encoder or ENCODER
+        self._onnx = None
 
     # -- lazily loaded pieces: a free tier should hold Arabic plus whatever was just asked for --
     @property
@@ -155,6 +201,10 @@ class Isnad:
         return self._lang[lg]
 
     def embed_query(self, q):
+        if self.encoder == "onnx":
+            if self._onnx is None:
+                self._onnx = OnnxEncoder()
+            return self._onnx.encode(self.meta["query_prefix"] + q)
         v = self.model.encode([self.meta["query_prefix"] + q], normalize_embeddings=True,
                               convert_to_numpy=True)[0]
         return v.astype(np.float32)
@@ -178,7 +228,7 @@ class Isnad:
             idx = self.lang_index(lg)
             if idx is None:
                 continue
-            dense = idx["E"].astype(np.float32) @ qv
+            dense = _dense(idx["E"], qv)
             lex = idx["bm25"].score(surface_text(lg, query))
             n = len(dense)
             d_top = np.argpartition(-dense, min(CANDIDATES, n - 1))[:CANDIDATES]

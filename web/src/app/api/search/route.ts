@@ -1,9 +1,5 @@
 import { NextResponse } from "next/server";
-
-// The browser never talks to the Python service directly. This keeps its address out of the
-// client, avoids CORS entirely, and leaves one place to add caching or limits later. The Jev key
-// lives with the Python service and never reaches this tier at all.
-const API = process.env.ISNAD_API_URL ?? "http://localhost:8000";
+import { API, upstreamHeaders } from "@/lib/upstream";
 
 export async function POST(req: Request) {
   let body: unknown;
@@ -22,7 +18,7 @@ export async function POST(req: Request) {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "x-forwarded-for": req.headers.get("x-forwarded-for") ?? "",
+        ...upstreamHeaders(req),
       },
       body: JSON.stringify({ q }),
       signal: AbortSignal.timeout(30_000),

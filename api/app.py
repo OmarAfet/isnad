@@ -47,7 +47,7 @@ ALT_MIN_PROB = 0.05
 # long. Knockout stays available, since on topic queries it found hadith the shortlist missed
 # (Muslim 4, Bukhari 2682, Bukhari 2459 for "حديث عن الكذب").
 MODE = os.environ.get("ISNAD_MODE", "net")
-CACHE_VERSION = "2026-10-05.knockout-1"   # bump when behaviour changes, so stale answers die
+CACHE_VERSION = "2026-10-05.topic-exit"    # bump when behaviour changes, so stale answers die
 # Test runs point ISNAD_CACHE_FILE at /tmp, so they do not overwrite the saved answers in git.
 CACHE_FILE = (os.environ.get("ISNAD_CACHE_FILE")
               or os.path.join(ROOT, "data", "cache", f"answers-{MODE}.json"))

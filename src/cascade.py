@@ -197,10 +197,13 @@ async def run(query, candidates, client=None, net=NET, group=GROUP):
                         len(groups))
             r["fatwa_request"] = fatwa
             return r
-        if not finalists:
-            return _result("no_match", None, 1.0, None, specific, rounds, len(cands), len(groups))
-
+        # A broad description goes to topic mode even when every group answered no_match: the
+        # pick question asks for ONE text, and for "حديث عن الكذب" no single text is the one, so
+        # all ten groups can rightly decline. Exiting here reported "nothing found" for a subject
+        # the shortlist covered (seen 2026-10-05 once the shortlist changed; round two never ran).
         topic_pool = _topic_pool(cands) if specific < TOPIC_SPECIFIC else []
+        if not finalists and not topic_pool:
+            return _result("no_match", None, 1.0, None, specific, rounds, len(cands), len(groups))
 
         # Order finalists by round-one confidence so the strongest candidates survive the cap.
         finalists.sort(key=lambda t: -t[1])

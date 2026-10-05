@@ -51,6 +51,9 @@ CASES = [
     ("ما حكم حديث إن الفقيه أشد على الشيطان من ألف عابد", {"confident", "tentative"},
      ["فقيه", "عابد"], "severity=mawdu"),
     ("حديث عن اختراع الطائرة والسفر إلى القمر", {"no_match", "topic"}, None, "topic==0"),
+    # A subject with the kind named: verses only, and the verse the reader most likely means.
+    ("ايه عن النوم", {"topic"}, None, "has=quran:2:255;kind=ayah"),
+    ("ايه عن بر الوالدين", {"topic"}, None, "has=quran:17:23;kind=ayah"),
 ]
 
 
@@ -104,6 +107,10 @@ def main():
                 continue
             if extra.startswith("ruling=") and (d.get("ruling") or {}).get("kind") != extra[7:]:
                 why.append(f"ruling kind {(d.get('ruling') or {}).get('kind')} != {extra[7:]}")
+            if extra.startswith("has=") and extra[4:] not in {t.get("id") for t in topic} | {r.get("id")}:
+                why.append(f"{extra[4:]} not listed")
+            if extra.startswith("kind=") and any(t.get("kind") != extra[5:] for t in topic):
+                why.append(f"listed a text that is not a {extra[5:]}")
             if extra.startswith("id=") and r.get("id") != extra[3:]:
                 why.append(f"id {r.get('id')} != {extra[3:]}")
             if extra.startswith("severity=") and r.get("severity") != extra[9:]:

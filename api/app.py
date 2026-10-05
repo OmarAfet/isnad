@@ -94,7 +94,7 @@ async def lifespan(app):
     STATE["hits"] = defaultdict(deque)
     STATE["ready_s"] = round(time.time() - t0, 1)
     yield
-    await STATE["jev"].close()
+    await STATE["jev"].aclose()
 
 
 app = FastAPI(title="Isnad", version="1.0", lifespan=lifespan)

@@ -102,8 +102,8 @@ ASK_INSTRUCTIONS = "What is this person asking Isnad for?"
 ASK_OPTIONS = {
     "find_text": (
         "To find a specific Qur'anic verse or hadith, its exact wording, its source or its "
-        "authenticity grading (for example 'ما صحة حديث' or 'ما حكم حديث ...'), or the texts on "
-        "a subject."),
+        "authenticity grading (for example 'ما صحة حديث' or 'ما حكم حديث ...'), or the verses or "
+        "hadith on a subject (for example 'آية عن الصبر', 'ايه عن النوم', 'حديث عن الغضب')."),
     "general_ruling": (
         "The Islamic ruling on a matter in general: whether something is permitted, forbidden or "
         "obligatory, asked about people in general rather than the asker's own situation."),
@@ -112,12 +112,21 @@ ASK_OPTIONS = {
         "me', 'my marriage', 'in my country', so that the answer depends on the facts of their "
         "case."),
 }
-RULING_THRESHOLD = 0.60    # P(general_ruling) + P(personal_case)
+# P(general_ruling) + P(personal_case). Measured (eval/ask_probe.py, 3 runs each): ruling
+# questions 0.97-0.99; "ايه عن بر الوالدين" 0.52-0.56 and once over 0.60 in a live run, which sent
+# a request for verses down the ruling path. 0.75 keeps the margin on both sides.
+RULING_THRESHOLD = 0.75
+# A reader who names the kind of text ("آية عن ...", "حديث عن ...", "verse about ...") and uses no
+# ruling word wants the texts, not a ruling, whatever the classifier says. "ايه" is also dialect
+# for "what", which is how "ايه عن النوم" was once read as a question about sleep.
+RULING_WORDS = {"حكم", "الحكم", "ماحكم", "يجوز", "يحل", "يحرم", "حلال", "حرام", "مكروه", "واجب",
+                "جائز", "فتوي", "الفتوي", "ruling", "permissible", "permitted", "allowed",
+                "forbidden", "haram", "halal", "fatwa"}
 RULING_RELEVANCE_INSTRUCTIONS = (
-    "The user in `description` asks about the Islamic ruling on a matter. Does the text at "
-    "`texts[{i}].text` address that matter itself, for example by commanding it, forbidding it, "
-    "warning against it, praising it, or setting out its consequence? Answer yes only if the "
-    "text addresses the matter, not if it merely shares a word with it."
+    "The user in `description` asks about the Islamic ruling on a matter. Here is a {kind}: "
+    "\"{text}\". Does this text address that matter itself, for example by commanding it, "
+    "forbidding it, warning against it, praising it, or setting out its consequence? Answer yes "
+    "only if the text addresses the matter, not if it merely shares a word with it."
 )
 
 # TOPIC MODE. "حديث عن الكذب" names a subject, not a text: there are dozens of hadiths about
@@ -131,13 +140,36 @@ RULING_RELEVANCE_INSTRUCTIONS = (
 # rulings; the reader picks the one they mean. Still selection, never generation.
 TOPIC_SPECIFIC = 0.35      # below this, the description names a subject rather than a text
 TOPIC_K = 24               # candidates judged for relevance
-TOPIC_MIN_REL = 0.60
+# Right texts scored 0.80 or more in every list measured on 2026-10-06 (sleep, patience, parents,
+# death, anger, mercy, lying, zina); wrong ones that passed 0.60 sat at 0.61-0.70 (84:17, 53:54).
+TOPIC_MIN_REL = 0.75
 TOPIC_MAX = 8
+TOPIC_KIND_MIN = 6       # texts of the asked-for kind needed to judge only that kind
+# The reader remembers a text by something it says, and picks theirs from the list. Asked whether
+# a text was "about" the subject, Jev turned Ayat al-Kursi (2:255) away for "ايه عن النوم" among
+# 24 texts: it is about Allah's attributes, yet "لا تأخذه سنة ولا نوم" is what that reader recalls.
+# The light stemmer files charity (الصدقة) and truthfulness (الصدق) under one stem, so the
+# question also rules out a word used in another sense. Measured on fixed texts
+# (eval/relevance_probe.py, 19 judgements): charity hadith for "حديث عن الصدق" 0.85 -> 0.08;
+# every right text 0.83 or more.
 RELEVANCE_INSTRUCTIONS = (
-    "Is the text at `texts[{i}].text` about the subject the user is asking about in "
-    "`description`? Answer yes only if the text itself addresses that subject, not if it merely "
-    "shares a word with it."
+    "The user remembers a text by something it says and describes it in `description`. Here is "
+    "a {kind}: \"{text}\". Does this text say something about that subject: state it, describe "
+    "it, command or forbid it, or deny it of someone? Answer no if the text only shares a word "
+    "or a root with the description, uses that word in another sense (as charity, الصدقة, is "
+    "not truthfulness, الصدق), or says nothing about the subject."
 )
+
+
+def _judge(template, c):
+    """A relevance question that carries its text. Questions that pointed at `texts[i]` in one
+    shared list let Jev's judgments bleed between neighbours: for "ايه عن النوم" 2:255 scored
+    0.52 in ranked order and 0.72 reversed, while 55:10, next to a true match, went 0.54 -> 0.91.
+    With the text inside the question, 2:255 scored 0.85 in both orders and 55:10 0.33 / 0.18."""
+    kind = "Qur'an verse" if c.get("kind") == "ayah" else "hadith"
+    return template.format(kind=kind, text=(c.get("matn") or "")[:MAX_CAND_CHARS].replace('"', "'"))
+
+
 # Authentic texts first: present the sound before the weak, as the framework's da'wah quality
 # standard asks. Weak and fabricated texts stay on the list, clearly graded, because knowing that
 # a saying people circulate is fabricated is itself what the reader needs.
@@ -169,7 +201,13 @@ def _criteria(group):
 
 def _topic_pool(cands):
     """The first TOPIC_K distinct texts from stage one, with looser copies of one report merged
-    so the relevance list does not show the same hadith twice."""
+    so the relevance list does not show the same hadith twice. When the reader asked for a kind
+    ("ايه عن النوم") and the shortlist holds enough of it, only that kind is judged: answering a
+    request for verses with eight hadith, as happened, is not an answer to it."""
+    kind = cands[0].get("wanted_kind") if cands else None
+    same = [c for c in cands if c.get("kind") == kind] if kind else []
+    if len(same) >= TOPIC_KIND_MIN:
+        cands = same
     pool = []
     for c in cands:
         if any(_same_report(c, p) for p in pool):
@@ -227,7 +265,9 @@ async def run(query, candidates, client=None, net=NET, group=GROUP):
 
         rounds = 1
         p_ruling = ask.get("general_ruling", 0.0) + ask.get("personal_case", 0.0)
-        if p_ruling >= RULING_THRESHOLD:
+        names_kind = bool(cands) and cands[0].get("wanted_kind") is not None
+        ruling_word = bool(set(normalize(query).lower().split()) & RULING_WORDS)
+        if p_ruling >= RULING_THRESHOLD and (ruling_word or not names_kind):
             kind = ("personal" if ask.get("personal_case", 0.0) >= ask.get("general_ruling", 0.0)
                     else "general")
             return await _ruling(client, query, cands, kind, p_ruling, specific, len(groups))
@@ -248,12 +288,8 @@ async def run(query, candidates, client=None, net=NET, group=GROUP):
         if short:
             crit, km = _criteria(short)
             q2["pick"] = Choice(instructions=PICK_INSTRUCTIONS, criteria=crit)
-        if topic_pool:
-            state2["texts"] = [{"kind": "Qur'an verse" if c.get("kind") == "ayah" else "hadith",
-                                "text": (c.get("matn") or "")[:MAX_CAND_CHARS]}
-                               for c in topic_pool]
-            for i in range(len(topic_pool)):
-                q2[f"t{i}"] = Noul(instructions=RELEVANCE_INSTRUCTIONS.format(i=i))
+        for i, c in enumerate(topic_pool):
+            q2[f"t{i}"] = Noul(instructions=_judge(RELEVANCE_INSTRUCTIONS, c))
         if not q2:
             return _result("no_match", None, 1.0, None, specific, rounds, len(cands), len(groups))
 
@@ -302,7 +338,7 @@ async def run(query, candidates, client=None, net=NET, group=GROUP):
         return _result("no_match", None, 1.0, None, specific, rounds, len(cands), len(groups))
     finally:
         if own:
-            await client.close()
+            await client.aclose()
 
 
 async def _ruling(client, query, cands, kind, p, specific, n_groups):
@@ -312,12 +348,10 @@ async def _ruling(client, query, cands, kind, p, specific, n_groups):
     pool = _topic_pool(cands)
     relevant = []
     if pool:
-        state = {"description": query,
-                 "texts": [{"kind": "Qur'an verse" if c.get("kind") == "ayah" else "hadith",
-                            "text": (c.get("matn") or "")[:MAX_CAND_CHARS]} for c in pool]}
-        questions = {f"t{i}": Noul(instructions=RULING_RELEVANCE_INSTRUCTIONS.format(i=i))
-                     for i in range(len(pool))}
-        r = await client.system_one(state=state, questions=questions, model=MODEL)
+        questions = {f"t{i}": Noul(instructions=_judge(RULING_RELEVANCE_INSTRUCTIONS, c))
+                     for i, c in enumerate(pool)}
+        r = await client.system_one(state={"description": query}, questions=questions,
+                                    model=MODEL)
         scored = [(c, float(r.answers[f"t{i}"].noul)) for i, c in enumerate(pool)]
         relevant = _dedupe([(c, s) for c, s in scored if s >= TOPIC_MIN_REL])
         relevant.sort(key=lambda cs: (_GRADE_ORDER.get(cs[0].get("severity") or "unknown", 1),

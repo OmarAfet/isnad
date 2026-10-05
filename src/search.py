@@ -42,6 +42,62 @@ HADITH_CUES = {"حديث", "الحديث", "احاديث", "الاحاديث", "
                "prophet"}
 KIND_BOOST = 0.10
 
+# REQUEST WORDS. Words that say which kind of text the reader wants, not what the text says. They
+# still choose the kind (above); they are dropped from the literal match only. Matched literally,
+# "ايه" in "ايه عن النوم" pulled in verses that contain the word "آية" (26:128, 37:14, 19:10), and
+# they filled the verse slots while the verses about sleep stayed out (eval/explain.py).
+# Only the kind words: dropping function words too ("عن", "the", "about") measured worse on the
+# labelled single-text queries, and BM25 already gives them little weight (eval/topic_recall.py).
+# "سنه" stays a content word: it is the slumber of 2:255 ("لا تأخذه سنة ولا نوم") as often as Sunnah.
+REQUEST_WORDS = (AYAH_CUES | HADITH_CUES) - {"سنه", "السنه"} | {"ءايه", "آيه"}
+LEX_CLEAN = True
+
+
+def literal_query(text):
+    """The words of the query that the literal match should look for: request words dropped,
+    unless nothing else is left."""
+    if not LEX_CLEAN:
+        return text
+    kept = [w for w in text.split() if w not in REQUEST_WORDS]
+    return " ".join(kept) if kept else text
+
+# LIGHT STEMMING for the Arabic literal match. The Qur'an writes "نَوۡمࣱ" (2:255), "وَٱلنَّوۡمَ"
+# (25:47), "نَوۡمَكُمۡ" (78:9); a reader writes "النوم". As whole tokens they never meet. Larkey,
+# Ballesteros and Connell's light10 (SIGIR 2002), the standard light stemmer for Arabic
+# retrieval: strip a leading و when 3 letters remain, one article (ال وال بال كال فال لل) when 2
+# remain, then the suffixes ها ان ات ون ين يه ه ي each when 2 remain. كم and هم are added, only
+# when 3 remain, for "نومكم". Applied to the index and the query alike; dense search is untouched.
+STEM_AR = True
+_AR_PREFIXES = ("وال", "بال", "كال", "فال", "لل", "ال")
+_AR_SUFFIXES = ("ها", "ان", "ات", "ون", "ين", "يه", "ه", "ي")
+_AR_SUFFIXES3 = ("كم", "هم")
+_stem_cache = {}
+
+
+def light_stem(w):
+    s = _stem_cache.get(w)
+    if s is not None:
+        return s
+    s = w
+    if len(s) > 3 and s.startswith("و"):
+        s = s[1:]
+    for p in _AR_PREFIXES:
+        if s.startswith(p) and len(s) - len(p) >= 2:
+            s = s[len(p):]
+            break
+    for x in _AR_SUFFIXES3:
+        if s.endswith(x) and len(s) - len(x) >= 3:
+            s = s[:-len(x)]
+    for x in _AR_SUFFIXES:
+        if s.endswith(x) and len(s) - len(x) >= 2:
+            s = s[:-len(x)]
+    _stem_cache[w] = s
+    return s
+
+
+def ar_tokens(text):
+    return [light_stem(w) for w in text.split()]
+
 # Variant collapsing. The same report sits in several collections - "إنما الأعمال بالنيات" occupies
 # seven places here - and handing all seven to a Choice splits the probability mass between them.
 # Measured: the correct hadith was selected with confidence 0.22 because six near-identical twins
@@ -90,9 +146,10 @@ class OnnxEncoder:
 
 
 class Bm25:
-    def __init__(self, docs, k1=1.5, b=0.75):
+    def __init__(self, docs, k1=1.5, b=0.75, tokenize=str.split):
         self.k1, self.b = k1, b
-        toks = [d.split() for d in docs]
+        self.tokenize = tokenize
+        toks = [tokenize(d) for d in docs]
         self.dl = np.array([len(t) for t in toks], dtype=np.float32)
         self.avgdl = float(self.dl.mean()) or 1.0
         self.post = defaultdict(list)
@@ -105,7 +162,7 @@ class Bm25:
 
     def score(self, q):
         s = np.zeros(self.N, dtype=np.float32)
-        for w in set(q.split()):
+        for w in set(self.tokenize(q)):
             p = self.post.get(w)
             if not p:
                 continue
@@ -195,7 +252,9 @@ class Isnad:
         with open(os.path.join(self.dir, f"surface_{lg}.jsonl"), encoding="utf-8") as f:
             for line in f:
                 docs.append(json.loads(line)["t"])
-        self._lang[lg] = {"E": E, "rows": rows, "bm25": Bm25(docs), "bm25_docs": docs}
+        tok = ar_tokens if (lg == "ar" and STEM_AR) else str.split
+        self._lang[lg] = {"E": E, "rows": rows, "bm25": Bm25(docs, tokenize=tok),
+                          "bm25_docs": docs}
         if lg == "ar":
             self._ar_pos = {int(r): p for p, r in enumerate(rows)}
         return self._lang[lg]
@@ -229,7 +288,7 @@ class Isnad:
             if idx is None:
                 continue
             dense = _dense(idx["E"], qv)
-            lex = idx["bm25"].score(surface_text(lg, query))
+            lex = idx["bm25"].score(literal_query(surface_text(lg, query)))
             n = len(dense)
             d_top = np.argpartition(-dense, min(CANDIDATES, n - 1))[:CANDIDATES]
             nz = np.nonzero(lex)[0]
@@ -293,6 +352,7 @@ class Isnad:
             r["score"] = float(scores[o])
             r["matched_language"] = via[ri]
             r["query_language"] = lang
+            r["wanted_kind"] = kind
             r["variants"] = []
             r["verify_url"] = (verify_url(plain(r.get("matn") or ""))
                                if r["kind"] == "hadith" else None)

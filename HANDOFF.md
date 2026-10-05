@@ -28,6 +28,8 @@ here. Gathered challenge context (rules, rubric, Discord answers, sources): `../
 | Web (Next.js 16, shadcn RTL, white Saudi dialect) | `web/` → https://isnad-app.vercel.app | **live** |
 | Search by subject ("ايه عن النوم"): kind words, light10 stemming, per-text relevance | `src/search.py`, `src/cascade.py` | **fixed 2026-10-06, live** |
 | Behaviour tests (14 cases) | `eval/smoke.py` | **14/14 local and production** |
+| Judge battery (57 typed questions) | `eval/battery.py` | **57/57 production** |
+| Qur'an text vs quran.com, all 6,236 verses | `eval/check_quran_text.py` | **0 split words** |
 
 ## 3. Run, test, deploy
 
@@ -89,6 +91,10 @@ Machine has 9 GB RAM: never run two embedding jobs at once.
 - Relevance judging (`eval/relevance_probe.py`): text inside each question, "same sense"
   wording, bar 0.75; right texts 0.80+. Request classifier (`eval/ask_probe.py`): 0/36 wrong.
 - Trace one query without Jev: `python eval/explain.py "<query>" --expect quran:2:255`.
+- Judge-style test (2026-10-06, agent on the live site + `eval/battery.py`): fixed split Qur'an
+  words (2,054 places, source fault), Muslim cited by Abd al-Baqi numbers (7,215 refs,
+  `scripts/08_cite_muslim.py`), quoted-saying guard, both kinds for ruling lists, cards open
+  the clicked text, Back works. Commit 92bb67f lists every finding and its evidence.
   First search after idle through the web ≈ 8 s (both functions start cold); warm ≈ 1 s.
 - Vercel Hobby CLI refuses any single file over 100 MB (per file, not total; measured).
 - TypeSafe limits (Omar's org): 80 requests/s, 100,000 input tokens/s.
@@ -120,7 +126,10 @@ Machine has 9 GB RAM: never run two embedding jobs at once.
 - Some matns still hold the chain (e.g. Tirmidhi 887); Muslim 6640 shows apart from 6638.
 - Knockout mode still answers ruling questions with a referral only.
 - Grader names for four Sunan translations are "Unknown" in the source metadata.
-- Cold start: the first search after a few idle minutes takes ≈ 8 s.
+- Cold start: the first search after a few idle minutes takes ≈ 8 s (the page says so after 3 s).
+- Modern words miss classical texts: "ما حكم الموسيقى" finds no text (al-Bukhari 5590 says
+  المعازف; "حكم المعازف" finds it). Hadith Jibril shows the Tirmidhi copy (the Sahihayn copies
+  are worded too differently to merge). Source punctuation (stray quote marks) is shown as is.
 
 ## 8. Processes at this point
 

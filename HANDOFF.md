@@ -122,6 +122,9 @@ Machine has 9 GB RAM: never run two embedding jobs at once.
 - Baseline (`eval/baseline.py`, production): described texts right first, of 29: keyword 17,
   meaning 20, hybrid 22, Isnad 29; sayings not in the books answered honestly, of 7: 0, 1, 0, 7.
   In-sample for Isnad (the battery guided the fixes).
+- Accessibility (`eval/a11y.sh`, axe-core 4.10.2, WCAG 2.0-2.2 A/AA rules): 0 violations on
+  home, a result, a list and /method. History scan before publishing: neither secret value in
+  any commit or tracked file; no .env ever committed.
 - Cost: Jev input tokens per search, battery of 76: mean 23,232, median 24,344, max 37,780
   -> $0.00098 a search, ~$1 per 1,000 ($0.042/Mtok input, output free; docs.typesafe.ai/models).
 - Session 3 probes: `eval/ask_probe2.py` (5 classes + Islamic gate, 58 descriptions x 2: 108/116

@@ -112,6 +112,7 @@ the fixes (in-sample): 29, 17, 20 and 22 of 29; 7, 0, 1 and 0 of 7 (`eval/baseli
 | Quoted saying vs subject, 27 descriptions x 2 runs | 54/54 | `eval/saying_probe.py` |
 | Citations looked up | about 20 ms, no model call | `eval/battery.py` (group "cite") |
 | Cost of the decision model per search, 76 questions | 23,232 input tokens mean (median 24,344): $0.00098 a search, about $1 per 1,000 at Jev's $0.042 per million input tokens (output is free) | `eval/battery.py` |
+| Accessibility, automated (axe-core 4.10.2, WCAG 2.0-2.2 A/AA rules), 4 pages | 0 violations (21-27 rules passed per page) | `eval/a11y.sh` |
 | Memory, all 9 languages loaded, 3 searches | peak 1.1 GB (was 1.6 GB, and production was killed at the 2 GB limit) | `eval/measure_memory.py` with `ISNAD_ENCODER=onnx` |
 
 ## Limits

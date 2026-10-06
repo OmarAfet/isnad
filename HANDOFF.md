@@ -53,9 +53,12 @@ full battery run is about 1.9 M tokens. The keep-warm ping and the page warm-up 
 | Page load warms the API; GitHub Action pings `/api/warm` every 5 min | `web/src/app/api/warm`, `.github/workflows/keep-warm.yml` | live, active |
 | README: sources log, licences, held-out results, limits, setup | `README.md`, `requirements*.txt` | done |
 | Branded tab icon; template files removed | `web/src/app/icon.svg` etc. | live |
+| SEO: search-word title + description, canonical URLs, JSON-LD SearchAction on `?q=`, `robots.txt` (blocks `/api/`), `sitemap.xml` (`/`, `/method`), manifest; site icon as the share image (512 px from `icon.svg`) | `web/src/app/layout.tsx`, `robots.ts`, `sitemap.ts`, `manifest.ts`, `opengraph-image.png` | live |
 | Full-corpus knockout mode (~40 s a search) | `src/knockout.py` | off |
 
-Production at the end of session 3: API at commit 96807f6, web at f6eb295 (same code as HEAD).
+Production: API at commit 96807f6; web at a29739c (SEO, deployed 2026-10-06 16:20 Riyadh; home,
+`/method`, `robots.txt`, `sitemap.xml`, `manifest.webmanifest` and `opengraph-image.png` checked
+HTTP 200 on the live site).
 
 ## 3. Run, test, deploy
 
@@ -111,6 +114,10 @@ embedding jobs at once.
     subject" is a question; misquote marks follow Jev's quoted-saying score. Measured and
     dropped: English-translation search for verse names, Arabic root matching, verses quoted by
     hadith, three prompt rewordings, a "bare statement" rule.
+19. **Share image is the site icon, not a screenshot** (2026-10-06): the saved screenshot
+    (`web/.shots/desktop-home.png`) shows an old subtitle and the dev-mode button, and a
+    generated image risks broken Arabic letter joining. A page that sets its own `openGraph` or
+    `twitter` must name the image again: Next.js replaces the layout's values, it does not merge.
 
 ## 5. Measured numbers (each printed by a script that also prints its command)
 
@@ -149,7 +156,10 @@ embedding jobs at once.
    واحد" (misquote), "the hadith about the five pillars of Islam" (English), "لماذا يعبد
    المسلمون الكعبة؟" (question -> referral), "البقرة 255" (citation). Deck brand: Readex Pro,
    #12183F, #6150EA, #2EF2C2, #F2F4FF; template slides 1-7 are instructions to delete; ≤ 10 MB.
-2. Optional: host the built index (1.2 GB) as a GitHub release asset so the repo runs without a
+2. **Google Search Console** (Omar; needs his Google account): add https://isnad-app.vercel.app
+   and submit `/sitemap.xml`. Old shared links keep their cached preview; the Facebook Sharing
+   Debugger refreshes one.
+3. Optional: host the built index (1.2 GB) as a GitHub release asset so the repo runs without a
    rebuild; Discord check-in.
 
 ## 7. Known limits (also in the README)

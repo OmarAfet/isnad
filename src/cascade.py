@@ -199,6 +199,7 @@ TOPIC_K = 24               # candidates judged for relevance
 # Right texts scored 0.80 or more in every list measured on 2026-10-06 (sleep, patience, parents,
 # death, anger, mercy, lying, zina); wrong ones that passed 0.60 sat at 0.61-0.70 (84:17, 53:54).
 TOPIC_MIN_REL = 0.75
+BROAD_SINGLE = 0.90       # a broad description returns one text only above this (see below)
 TOPIC_MAX = 8
 TOPIC_KIND_MIN = 6       # texts of the asked-for kind needed to judge only that kind
 # The reader remembers a text by something it says, and picks theirs from the list. Asked whether
@@ -531,8 +532,14 @@ async def _run(query, candidates, client, net=NET, group=GROUP):
             elif cands and cands[0].get("query_language") == "ar" and not _quote_ok(query, rec):
                 specific_answer = None
 
-    # A broad description that still pointed clearly at one text gets that text.
-    if specific_answer and (specific_answer["verdict"] == "confident" or not topic_pool):
+    # A broad description that still pointed clearly at one text gets that text: "verse that
+    # Jesus was not crucified" is scored broad and is 4:157 at 0.99. "Clearly" is BROAD_SINGLE,
+    # not HIGH: "حديث عن الكذب" got al-Bukhari 2459 alone at 0.82 where a list belongs (production
+    # smoke, 2026-10-06), as did "хадис о милосердии" (0.79-0.81) and an Indonesian subject (0.70);
+    # loosely described single texts scored 0.91-1.00.
+    if specific_answer and (not topic_pool or
+                            (specific_answer["verdict"] == "confident" and
+                             (specific_answer["confidence"] or 0) >= BROAD_SINGLE)):
         return specific_answer
 
     if topic_pool:

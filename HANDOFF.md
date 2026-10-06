@@ -98,6 +98,9 @@ Machine has 9 GB RAM: never run two embedding jobs at once.
 14. **Identical shown text = one report**, so the Sahihayn copy leads (al-Bukhari 6922, not
     al-Nasa'i 4063, for "من بدل دينه فاقتلوه").
 15. **No disk writes in the default mode**: answers live in memory; only knockout saves them.
+16. **A broad request returns one text only at p >= 0.90** (BROAD_SINGLE), else the list:
+    "حديث عن الكذب" got one hadith at 0.82; loosely described single verses score 0.91-1.00.
+17. **Translations whose letters are mostly Arabic are not shown** (502 Bengali entries).
 
 ## 5. Measured numbers (each reproducible from a script)
 
@@ -122,6 +125,7 @@ Machine has 9 GB RAM: never run two embedding jobs at once.
   described texts right first, of 30: keyword 22, meaning 16, hybrid 23, **Isnad 28**; sayings
   not in the books answered honestly, of 8: 0, 1, 0, **8**. Misses: Muslim 782 for 783 and
   al-Tirmidhi 2485 for al-Bukhari 12 (same subject, other wording). Do not tune on this set.
+  Second run after later fixes (5e2f66a, production): identical, 28/30 and 8/8.
 - Baseline (`eval/baseline.py`, production): described texts right first, of 29: keyword 17,
   meaning 20, hybrid 22, Isnad 29; sayings not in the books answered honestly, of 7: 0, 1, 0, 7.
   In-sample for Isnad (the battery guided the fixes).

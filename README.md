@@ -97,7 +97,8 @@ dialect, English, Indonesian, Urdu, French and Russian:
 A search engine always returns its top hit, so for a saying that is not in the books it shows a
 text that does not contain it; Isnad said "not found" for 6 and gave 2 as "closest, verify before
 citing". Isnad's 2 misses each gave a sound hadith on the same subject in other words (Muslim 782
-for 783; al-Tirmidhi 2485 for al-Bukhari 12). On the battery's own questions, which also guided
+for 783; al-Tirmidhi 2485 for al-Bukhari 12). A second run after later fixes (commit 5e2f66a)
+gave the same numbers. On the battery's own questions, which also guided
 the fixes (in-sample): 29, 17, 20 and 22 of 29; 7, 0, 1 and 0 of 7 (`eval/baseline.py`).
 
 | What | Result | Script |

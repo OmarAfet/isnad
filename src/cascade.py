@@ -31,7 +31,7 @@ sys.path.insert(0, os.path.join(HERE, "..", "scripts"))
 
 from decide import HIGH, LOW, NO_MATCH, load_key, message_ar   # noqa: E402
 from _arabic import normalize                                   # noqa: E402
-from _dorar import fiqh_url                                     # noqa: E402
+from _dorar import fiqh_url, refer_url                          # noqa: E402
 from search import REQUEST_WORDS, light_stem                    # noqa: E402
 
 # Family merge at decision time. Search already collapses near-identical copies of a report, but
@@ -114,11 +114,58 @@ ASK_OPTIONS = {
         "person, for example 'هل يجوز لي', 'هل يجوز أفطر وأنا مسافر', 'طلقت زوجتي', 'is it "
         "permitted for me', 'my marriage', 'in my country', so that the answer depends on the "
         "facts of their case."),
+    # QUESTIONS ABOUT ISLAM. The Reference Framework's content-safety test cases are mostly of this
+    # kind ("لماذا يعبد المسلمون الكعبة؟", "هل الإسلام انتشر بالسيف؟", "ما معنى التوحيد"), and with
+    # three classes every one of them was read as a ruling question: the reader got "إسناد ما يفتي"
+    # and a fiqh-encyclopedia search for "لماذا يعبد المسلمون الكعبة" (judge test, 2026-10-06).
+    "question": (
+        "A question about Islam itself: a belief, the meaning of a term or concept, an event in "
+        "its history, the reason behind a teaching, or an objection or misconception (for "
+        "example 'لماذا يعبد المسلمون الكعبة', 'هل القرآن من تأليف محمد', 'what is tawhid', "
+        "'did Islam spread by the sword'). Not a ruling on whether an act is permitted, and not "
+        "a search for a text."),
+    # Out of scope by the Reference Framework: "الحكم على الأشخاص أو الجماعات". "هل الشيعة كفار" and
+    # "هل ابن تيمية مبتدع" were answered as ruling questions, with a fiqh search for their words.
+    "judge_people": (
+        "A judgement on a specific person, sect or group of people: whether they are believers, "
+        "disbelievers, innovators, astray, or bound for Paradise or Hell (for example 'هل فلان "
+        "كافر', 'هل الطائفة الفلانية في النار')."),
 }
-# P(general_ruling) + P(personal_case). Measured (eval/ask_probe.py, 3 runs each): ruling
-# questions 0.97-0.99; "ايه عن بر الوالدين" 0.52-0.56 and once over 0.60 in a live run, which sent
-# a request for verses down the ruling path. 0.75 keeps the margin on both sides.
+# "what is the capital of France" is a question too, and read as one about Islam it was sent to an
+# Islam Q&A book (local battery, 2026-10-06). An "unrelated" option in the Choice above fixed it but
+# took probability from real requests: "verse about bees" (16:68) scored 0.61-0.64 unrelated
+# (eval/ask_probe2.py). So the question path alone asks a separate yes/no, which competes with
+# nothing.
+ISLAMIC_INSTRUCTIONS = (
+    "Is this request about Islam, the Qur'an, the hadith, the Prophet, or Muslims' beliefs and "
+    "practice in any way?"
+)
+ISLAMIC_THRESHOLD = 0.50
+# P(general_ruling) + P(personal_case) [+ P(question) for a question]. Measured (eval/ask_probe.py,
+# 3 runs each): ruling questions 0.97-0.99; "ايه عن بر الوالدين" 0.52-0.56 and once over 0.60 in a
+# live run, which sent a request for verses down the ruling path. 0.75 keeps the margin on both
+# sides. With five classes (eval/ask_probe2.py, 48 descriptions x 2 runs): questions 0.98-1.00,
+# judging people 1.00, find_text and ruling as before.
 RULING_THRESHOLD = 0.75
+JUDGE_THRESHOLD = 0.50
+# The question path needs the form of a question. Bare sayings read as statements about Islam:
+# "الدين المعاملة", a saying that is not a hadith, scored P(question) 0.64-0.71, and its answer is
+# "not found in the books", not a list of texts about religion.
+QUESTION_WORDS = {"هل", "لماذا", "لماذ", "ليش", "ليه", "ما", "ماذا", "ماهو", "ماهي", "مامعني",
+                  "كيف", "متي", "اين", "وين", "من", "مين", "وش", "ايش", "شو", "كم", "ترجم",
+                  "اشرح", "عرف", "فسر", "وضح", "why", "what", "how", "is", "are", "does", "do",
+                  "did", "can", "who", "when", "where", "which", "explain", "define", "translate"}
+# WHERE TO SEND A QUESTION. Each option is a reference the Reference Framework approves for that
+# kind of content (p. 3): objections and common questions, creed, fiqh, history, terms.
+REFER_INSTRUCTIONS = "Which kind of reference would answer this question about Islam best?"
+REFER_OPTIONS = {
+    "objection": ("A common question, objection or misconception about Islam, the Prophet or the "
+                  "Qur'an, as a non-Muslim or a doubter would ask it."),
+    "creed": "A point of Islamic creed: belief about Allah, His attributes, prophets, the unseen.",
+    "fiqh": "Islamic law: rulings, worship, transactions, or why scholars differ on rulings.",
+    "history": "The Prophet's life or Islamic history: an event, a date, a person's story.",
+    "term": "The meaning or translation of an Islamic term or concept.",
+}
 # A reader who names the kind of text ("آية عن ...", "حديث عن ...", "verse about ...") and uses no
 # ruling word wants the texts, not a ruling, whatever the classifier says. "ايه" is also dialect
 # for "what", which is how "ايه عن النوم" was once read as a question about sleep.
@@ -130,6 +177,12 @@ RULING_RELEVANCE_INSTRUCTIONS = (
     "\"{text}\". Does this text address that matter itself, for example by commanding it, "
     "forbidding it, warning against it, praising it, or setting out its consequence? Answer yes "
     "only if the text addresses the matter, not if it merely shares a word with it."
+)
+QUESTION_RELEVANCE_INSTRUCTIONS = (
+    "The user in `description` asks a question about Islam. Here is a {kind}: \"{text}\". Does "
+    "this text speak directly to that question, for example by stating the belief, the reason or "
+    "the event it asks about, or by correcting the misconception in it? Answer no if the text "
+    "only shares a word with the question or is about something else."
 )
 
 # TOPIC MODE. "حديث عن الكذب" names a subject, not a text: there are dozens of hadiths about
@@ -183,6 +236,17 @@ SPECIFIC_INSTRUCTIONS = (
     "Does this description contain enough specific detail to identify one particular Qur'anic "
     "verse or hadith, as opposed to naming a broad topic?"
 )
+# A QUOTED SAYING IS NOT A SUBJECT. "الدين المعاملة", a saying that is not a hadith, is short and
+# reads as broad, so it went to topic mode, where "الدين" was read as الدَّين (debt) and four hadith
+# on debts were listed as "texts about this" (judge test, 2026-10-06). A reader who quotes words
+# asks whether they are a verse or hadith; the answer is that text, or "not found", never a list.
+SAYING_INSTRUCTIONS = (
+    "Is the user quoting the words of one specific saying as they remember them, to find out "
+    "whether it is a verse or a hadith and where it is (for example 'الدين المعاملة', 'اختلاف "
+    "أمتي رحمة', 'إنما الأعمال بالنيات'), rather than naming a subject to find texts about (for "
+    "example 'الصبر', 'بر الوالدين', 'حديث عن الكذب')?"
+)
+SAYING_THRESHOLD = 0.60
 
 
 # A QUOTED SAYING MUST BE IN THE ANSWER. Asked "اختلاف أمتي رحمة" - a saying that is not a sound
@@ -193,7 +257,9 @@ SPECIFIC_INSTRUCTIONS = (
 # the wrong ones 0.00-0.33. Paraphrases reach 0.40 and are not checked.
 QUOTE_MIN = 0.5
 DESCRIPTION_WORDS = {"عن", "اللي", "التي", "الذي", "فيها", "فيه", "يقول", "تقول", "يتكلم",
-                     "تتكلم", "معناه", "معني"}
+                     "تتكلم", "معناه", "معني",
+                     # A request about a text, not words from it: "فسر لي آية الكرسي".
+                     "فسر", "اشرح", "وضح", "تفسير", "شرح", "ترجم", "ترجمه"}
 FUNCTION_WORDS = {"في", "من", "علي", "الي", "ان", "قال", "ما", "هو", "هي", "او", "ثم", "كل",
                   "هذا", "هذه", "هذي", "ذلك", "له", "لها", "لهم", "به", "بها", "كان", "يا", "لا",
                   "ولا", "لم", "لن", "قد", "حتي", "اذا", "و", "الا", "انه", "انها", "لما", "لي"}
@@ -207,7 +273,51 @@ def _quote_ok(query, rec):
     if not content:
         return True
     text = {light_stem(w) for w in (rec.get("surface") or normalize(rec.get("matn") or "")).split()}
-    return sum(1 for w in content if w in text) / len(content) >= QUOTE_MIN
+    found = sum(1 for w in content if w in text)
+    # A two-word saying must be there whole. Half of "الدين المعاملة" is one word, and "الدِّين"
+    # (religion) is spelt as "الدَّين" (debt): Ibn Majah 2425 on debts came back at 0.76 as the
+    # "very weak hadith" behind a saying it does not contain (judge test, 2026-10-06).
+    if len(content) <= 2:
+        return found == len(content)
+    return found / len(content) >= QUOTE_MIN
+
+
+# THE READER'S WORDING AGAINST THE SOURCE'S. A Reference Framework test case is a question that
+# quotes a verse wrongly; the expected behaviour is "التنبيه على النص الصحيح بلطف، وإظهار السورة
+# والآية وعدم البناء على النص المحرف". Isnad already shows the right text; this says where the
+# reader's words differ: "قل هو الله واحد" -> 112:1 says أحد. Only for a quotation (no describing
+# words, two or more quoted words, at least half of them in the text), never for a paraphrase,
+# and a word counts as found if any listed copy of the report has it. The article and the
+# prepositions joined to it are ignored; a conjunction alone is not stripped, or "واحد" would
+# pass as "احد".
+_ARTICLE = ("وبال", "فبال", "وال", "بال", "فال", "كال", "لل", "ال")
+
+
+def _bare(w):
+    for p in _ARTICLE:
+        if w.startswith(p) and len(w) - len(p) >= 2:
+            return w[len(p):]
+    return w
+
+
+def wording(query, texts):
+    """Positions (in query.split()) of quoted words that are not in the source's wording, or
+    None when the query is not a quotation or every word is there."""
+    norm = [normalize(t) for t in query.split()]
+    if any(n in DESCRIPTION_WORDS for n in norm):
+        return None
+    content = [(i, n) for i, n in enumerate(norm)
+               if n and n not in REQUEST_WORDS and n not in FUNCTION_WORDS]
+    if len(content) < 2:
+        return None
+    vocab = set()
+    for t in texts:
+        for w in ((t.get("surface") or "") + " " + normalize(t.get("matn") or "")).split():
+            vocab.add(_bare(w))
+    missing = [i for i, n in content if _bare(n) not in vocab]
+    if not missing or (len(content) - len(missing)) / len(content) < QUOTE_MIN:
+        return None
+    return missing
 
 
 def _criteria(group):
@@ -277,7 +387,12 @@ async def run(query, candidates, client=None, net=NET, group=GROUP):
         questions[f"g{gi}"] = Choice(instructions=PICK_INSTRUCTIONS, criteria=crit)
         keymaps[f"g{gi}"] = km
     questions["specific_enough"] = Noul(instructions=SPECIFIC_INSTRUCTIONS)
+    questions["saying"] = Noul(instructions=SAYING_INSTRUCTIONS)
     questions["ask"] = Choice(instructions=ASK_INSTRUCTIONS, criteria=ASK_OPTIONS)
+    # Asked of every request, in the same round: it only matters for a question about Islam, and
+    # questions in one request run in parallel, so it adds no wait.
+    questions["refer"] = Choice(instructions=REFER_INSTRUCTIONS, criteria=REFER_OPTIONS)
+    questions["islamic"] = Noul(instructions=ISLAMIC_INSTRUCTIONS)
 
     own = client is None
     client = client or AsyncTypeSafeClient()
@@ -293,13 +408,41 @@ async def run(query, candidates, client=None, net=NET, group=GROUP):
             finalists.append((rec, float(a.confidence),
                               float((a.probabilities or {}).get(a.choice, 0.0))))
         specific = float(r1.answers["specific_enough"].noul)
+        # Measured (eval/saying_probe.py, 27 descriptions x 2 runs): quoted sayings 0.73-0.92,
+        # subjects 0.05-0.23; 0 of 54 on the wrong side of 0.60.
+        saying = float(r1.answers["saying"].noul)
         ask = {k: float(v) for k, v in (r1.answers["ask"].probabilities or {}).items()}
 
         rounds = 1
         p_ruling = ask.get("general_ruling", 0.0) + ask.get("personal_case", 0.0)
         names_kind = bool(cands) and cands[0].get("wanted_kind") is not None
-        ruling_word = bool(set(normalize(query).lower().split()) & RULING_WORDS)
-        if p_ruling >= RULING_THRESHOLD and (ruling_word or not names_kind):
+        words = set(normalize(query).lower().replace("؟", " ").replace("?", " ").split())
+        ruling_word = bool(words & RULING_WORDS)
+        # A reader who names the kind of text ("حديث عن ...", "آية تثبت ...") wants texts, whatever
+        # else the request reads like.
+        if ask.get("judge_people", 0.0) >= JUDGE_THRESHOLD and not names_kind:
+            out = _result("out_of_scope", None, None, None, specific, rounds, len(cands),
+                          len(groups))
+            out["scope"] = "judge_people"
+            return out
+        first = (normalize(query).lower().split() or [""])[0]
+        is_question = "?" in query or "؟" in query or bool(words & QUESTION_WORDS)
+        # Measured (eval/ask_probe2.py, 2 runs): questions about Islam 0.93-0.99, unrelated ones
+        # ("what is the capital of France") 0.01-0.02. Only the question path asks it: "verse about
+        # bees" scored 0.08, because the word "verse" alone does not say Qur'an to it.
+        islamic = float(r1.answers["islamic"].noul)
+        p_question = ask.get("question", 0.0) if is_question and \
+            islamic >= ISLAMIC_THRESHOLD else 0.0
+        # "هل القرآن من تأليف محمد؟" names the Qur'an as its subject, not as the kind of text it
+        # wants: a request that opens with a question word is a question whatever it names.
+        if p_question > p_ruling and first in QUESTION_WORDS:
+            names_kind = False
+        if p_ruling + p_question >= RULING_THRESHOLD and (ruling_word or not names_kind):
+            if p_question > p_ruling and not ruling_word:
+                refer = r1.answers["refer"].choice
+                return await _ruling(client, query, candidates, "question", p_question, specific,
+                                     len(groups), refer=refer if refer in REFER_OPTIONS else
+                                     "objection")
             kind = ("personal" if ask.get("personal_case", 0.0) >= ask.get("general_ruling", 0.0)
                     else "general")
             return await _ruling(client, query, candidates, kind, p_ruling, specific, len(groups))
@@ -307,7 +450,8 @@ async def run(query, candidates, client=None, net=NET, group=GROUP):
         # pick question asks for ONE text, and for "حديث عن الكذب" no single text is the one, so
         # all ten groups can rightly decline. Exiting here reported "nothing found" for a subject
         # the shortlist covered (seen 2026-10-05 once the shortlist changed; round two never ran).
-        topic_pool = _topic_pool(cands) if specific < TOPIC_SPECIFIC else []
+        topic_pool = _topic_pool(cands) if specific < TOPIC_SPECIFIC and \
+            saying < SAYING_THRESHOLD else []
         if not finalists and not topic_pool:
             return _result("no_match", None, 1.0, None, specific, rounds, len(cands), len(groups))
 
@@ -382,10 +526,17 @@ async def run(query, candidates, client=None, net=NET, group=GROUP):
             await client.aclose()
 
 
-async def _ruling(client, query, cands, kind, p, specific, n_groups):
+async def _ruling(client, query, cands, kind, p, specific, n_groups, refer=None):
     """A ruling question: the texts that address the matter, sound before weak, and a referral.
-    Never a ruling: the reader gets the sources' words and where to ask."""
+    Never a ruling: the reader gets the sources' words and where to ask.
+
+    kind "question" is a question about Islam that is not a ruling (belief, meaning, history,
+    objection): the same texts-then-referral answer, judged against the question, and referred
+    to the approved reference for its kind (`refer`) instead of the fiqh encyclopedia. Isnad
+    writes no answer of its own in either case."""
     from typesafe_sdk import Noul
+    template = QUESTION_RELEVANCE_INSTRUCTIONS if kind == "question" else \
+        RULING_RELEVANCE_INSTRUCTIONS
     # Both kinds are judged: the evidence on a ruling starts with the Qur'an, and a pool ranked
     # by score alone held 24 hadith for "هل يجوز أفطر في رمضان إذا كنت مسافر؟" while 2:184,
     # which states the travel concession, sat lower (judge-style test, 2026-10-06).
@@ -397,7 +548,7 @@ async def _ruling(client, query, cands, kind, p, specific, n_groups):
             _topic_pool([c for c in cands if c.get("kind") == "hadith"])[:half]
     relevant = []
     if pool:
-        questions = {f"t{i}": Noul(instructions=_judge(RULING_RELEVANCE_INSTRUCTIONS, c))
+        questions = {f"t{i}": Noul(instructions=_judge(template, c))
                      for i, c in enumerate(pool)}
         r = await client.system_one(state={"description": query}, questions=questions,
                                     model=MODEL)
@@ -405,9 +556,14 @@ async def _ruling(client, query, cands, kind, p, specific, n_groups):
         relevant = _dedupe([(c, s) for c, s in scored if s >= TOPIC_MIN_REL])
         relevant.sort(key=lambda cs: (_GRADE_ORDER.get(cs[0].get("severity") or "unknown", 1),
                                       -cs[1]))
-    out = _result("ruling", None, None, None, specific, 2 if pool else 1, len(cands), n_groups)
+    out = _result("question" if kind == "question" else "ruling", None, None, None, specific,
+                  2 if pool else 1, len(cands), n_groups)
     out["topic"] = [{"record": c, "relevance": s} for c, s in relevant[:TOPIC_MAX]]
-    out["ruling"] = {"kind": kind, "probability": round(p, 3), "fiqh_url": fiqh_url(query)}
+    if kind == "question":
+        lang = cands[0].get("query_language") if cands else None
+        out["refer"] = {"kind": refer, "probability": round(p, 3), "url": refer_url(refer, lang)}
+    else:
+        out["ruling"] = {"kind": kind, "probability": round(p, 3), "fiqh_url": fiqh_url(query)}
     return out
 
 
@@ -423,6 +579,8 @@ def _result(verdict, record, conf, prob, specific, rounds, net, groups, probabil
         "jev_rounds": rounds,
         "fatwa_request": None,
         "ruling": None,
+        "refer": None,
+        "scope": None,
         "jev_confidence": None,
         "family": [],
         "topic": [],

@@ -7,6 +7,8 @@ export type Verdict =
   | "no_match"
   | "topic"
   | "ruling"
+  | "question"        // a question about Islam, not a ruling: texts that speak to it + a reference
+  | "out_of_scope"    // outside Isnad's work (judging people or groups): said plainly, no texts
   | "fatwa_request"   // knockout mode only: a referral with no texts (session-1 behaviour)
   | "decision_unavailable";
 
@@ -74,6 +76,16 @@ export interface SearchResponse {
   ruling?: RulingInfo | null;
   // A surah named on its own ("سورة الإخلاص"): its verses, in order, looked up rather than judged.
   surah?: { name: string; verses: number } | null;
+  // A question about Islam: the kind of approved reference that answers it, and its address.
+  refer?: { kind: string; url: string } | null;
+  scope?: "judge_people" | null;
+  // Positions in query.split(" ") of quoted words the text does not have.
+  wording?: { missing: number[] } | null;
+  // A citation looked up by its reference, not searched: no match percentage applies.
+  lookup?:
+    | { kind: "ayah"; surah: string; from: number; to: number }
+    | { kind: "hadith"; ref: string; count: number }
+    | null;
   jev?: { rounds: number; net: number; groups: number };
   timing_ms: { search: number; decide: number | null; total: number };
   cached?: boolean;

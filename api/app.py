@@ -47,7 +47,7 @@ ALT_MIN_PROB = 0.05
 # long. Knockout stays available, since on topic queries it found hadith the shortlist missed
 # (Muslim 4, Bukhari 2682, Bukhari 2459 for "حديث عن الكذب").
 MODE = os.environ.get("ISNAD_MODE", "net")
-CACHE_VERSION = "2026-10-06.judge-battery"  # bump when behaviour changes, so stale answers die
+CACHE_VERSION = "2026-10-06.questions-lookup"  # bump when behaviour changes, so stale answers die
 # Test runs point ISNAD_CACHE_FILE at /tmp, so they do not overwrite the saved answers in git.
 CACHE_FILE = (os.environ.get("ISNAD_CACHE_FILE")
               or os.path.join(ROOT, "data", "cache", f"answers-{MODE}.json"))
@@ -260,7 +260,21 @@ async def _answer(q, progress=None):
             cands = d.pop("_candidates", []) if isinstance(d, dict) else []
         else:
             surah = ix.named_surah(q)
-            if surah:
+            found = None if surah else ix.lookup(q)
+            if found:
+                # A citation ("البقرة 255", "مسلم 2564") is answered from the reference itself.
+                # No match percentage: nothing was judged, so none is shown.
+                from _lang import detect
+                recs = found.pop("records")
+                lang = detect(q) if any(ch.isalpha() for ch in q) else "ar"
+                cands, t_search, t1 = recs, (time.time() - t0) * 1000, time.time()
+                if len(recs) == 1:
+                    d = cascade._result("confident", recs[0], None, None, 1.0, 0, 0, 0)
+                else:
+                    d = cascade._result("topic", None, None, None, 1.0, 0, 0, 0)
+                    d["topic"] = [{"record": r, "relevance": 1.0} for r in recs]
+                d["lookup"] = found
+            elif surah:
                 # A surah named on its own is looked up, not judged: its verses, in order.
                 cands, t_search, lang, t1 = surah, (time.time() - t0) * 1000, "ar", time.time()
                 d = cascade._result("topic", None, None, None, 1.0, 0, 0, 0)
@@ -300,6 +314,16 @@ async def _answer(q, progress=None):
     if d.get("record") is not None:
         d["record"]["matched_language"] = lang
 
+    # A quotation whose words differ from the source's: which of the reader's words are not in it
+    # (cascade.wording). Every listed copy of the report counts, so a wording found in another
+    # collection is not marked.
+    missing = None
+    rec = d.get("record")
+    if rec and d["verdict"] in ("confident", "tentative") and lang == "ar" and not d.get("lookup"):
+        copies = [rec] + [by_id.get(v["id"]) or ix.display(v["id"])
+                          for v in rec.get("variants") or []]
+        missing = cascade.wording(q, [c for c in copies if c])
+
     out = {
         "query": q,
         "query_language": lang,
@@ -309,7 +333,15 @@ async def _answer(q, progress=None):
         "specific_enough": round(d["specific_enough"], 3),
         "fatwa_request": d.get("fatwa_request"),
         "ruling": d.get("ruling"),
+        # A question about Islam that is not a ruling: where its answer is (an approved reference).
+        "refer": d.get("refer"),
+        # Outside what Isnad does ("judge_people"): said plainly, with no texts.
+        "scope": d.get("scope"),
         "surah": d.get("surah"),
+        # A citation looked up rather than searched: what was asked for.
+        "lookup": d.get("lookup"),
+        # Positions of the reader's quoted words that the text does not have (see above).
+        "wording": {"missing": missing} if missing else None,
         "result": _shape(d["record"], lang),
         "alternatives": [dict(_shape(by_id[rid], lang), probability=round(p, 3))
                          for rid, p in alts],

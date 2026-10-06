@@ -10,12 +10,14 @@ import type { SearchResponse } from "@/lib/types";
 import { ResultView } from "./result-view";
 import { SearchForm } from "./search-form";
 
-// Chosen to show what Isnad promises: a paraphrase in Arabic, a fragment of a verse, a
+// Chosen to show what Isnad promises: a famous wording that the books do not have (al-Nasa'i
+// 3104 says "تحت رجليها", and the reader's other words are marked), a fragment of a verse, a
 // description in another language, and a widely shared saying that is in fact fabricated (Ibn
-// Majah 222, graded mawdu by al-Albani). The last one is the filed idea's stated impact,
-// "تقليل تداول الأحاديث الموضوعة", shown rather than claimed.
+// Majah 222, graded mawdu by al-Albani). The fabricated one is the filed idea's stated impact,
+// "تقليل تداول الأحاديث الموضوعة", shown rather than claimed. The first chip was "حديث عن أن
+// الأعمال بالنيات", which is the hadith's own words and showed no more than a keyword search.
 const EXAMPLES = [
-  "حديث عن أن الأعمال بالنيات",
+  "الجنة تحت أقدام الأمهات",
   "الآية اللي فيها لا تأخذه سنة ولا نوم",
   "حديث إن الفقيه أشد على الشيطان من ألف عابد",
   "the hadith about the five pillars of Islam",
@@ -118,6 +120,11 @@ export function IsnadApp() {
   useEffect(() => {
     if (urlQ && ran.current !== urlQ) void run(urlQ);
   }, [urlQ, run]);
+
+  // Start the search service while the reader types (see app/api/warm/route.ts).
+  useEffect(() => {
+    void fetch("/api/warm", { method: "POST" }).catch(() => {});
+  }, []);
 
   // Every search and every opened card is a history entry, so Back returns to the list or the
   // search before; replacing the entry, as before, lost them (judge-style test, 2026-10-06).

@@ -8,7 +8,9 @@ export const copy = {
 
   hero: {
     title: "تذكر المعنى ونسيت اللفظ؟",
-    subtitle: "اكتب اللي تذكره، ونطلع لك النص الصحيح بمصدره ودرجته.",
+    // "النص الصحيح" read as "the sahih text", while Isnad also shows weak and fabricated texts
+    // with their grade (judge test, 2026-10-06). The text "بلفظه" is what is promised.
+    subtitle: "اكتب اللي تذكره، ونطلع لك النص بلفظه ومصدره ودرجته.",
   },
 
   search: {
@@ -41,6 +43,11 @@ export const copy = {
     translation: "الترجمة المنشورة",
     translator: (name: string) => `ترجمة ${name}`,
     translatorUnknown: "المصدر ما ذكر اسم المترجم",
+    // A verse links to quranpedia.net, the Qur'an reference the Reference Framework names; its
+    // page shows the verse with its tafsir.
+    verifyAyah: "الآية وتفسيرها في الموسوعة القرآنية",
+    // Under the reader's quotation when some of its words are not the text's (see result-view).
+    wording: "الكلمات اللي تحتها خط تختلف عن لفظ النص، فخذ اللفظ من النص.",
     match: "تطابقه مع وصفك",
     matchHelp: "هذي نسبة تطابق النص مع وصفك، مو حكم على صحته.",
     copy: "انسخ النص",
@@ -65,6 +72,10 @@ export const copy = {
     surahFirst: (name: string, shown: number, total: number) =>
       `أول ${shown} آيات من سورة ${name}، وفيها ${total} آية:`,
     topicOpen: "اعرض هذا النص",
+    // A citation looked up by its reference ("البقرة 285-286", "مسلم 2564").
+    lookupVerses: (surah: string, from: number, to: number) =>
+      `سورة ${surah}، من الآية ${from} إلى الآية ${to}:`,
+    lookupNarrations: (ref: string) => `روايات ${ref}:`,
     fatwa: "سؤالك يحتاج فتوى، وإسناد ما يفتي. اسأل أهل العلم أو جهة إفتاء معتمدة.",
     unavailable: "خدمة التحقق متوقفة الحين. هذي نتائج بحث ما تأكدنا منها.",
   },
@@ -82,6 +93,30 @@ export const copy = {
     detail: "للحكم بالتفصيل:",
     fiqh: "الموسوعة الفقهية (الدرر السنية)",
     ask: "اسأل أهل العلم أو جهة إفتاء معتمدة.",
+  },
+
+  // A question about Islam that is not a ruling ("لماذا يعبد المسلمون الكعبة؟"): the texts that
+  // speak to it, then the approved reference for its kind. Isnad writes no answer of its own.
+  question: {
+    texts: "هذي نصوص تتكلم عن سؤالك:",
+    none: "ما لقينا نص يجاوب سؤالك مباشرة.",
+    noAnswer: "إسناد يعرض النصوص، وما يجاوب الأسئلة من عنده.",
+    detail: "للجواب الموثق:",
+    ask: "أو اسأل أهل العلم.",
+    // The references the Reference Framework approves for each kind of question (p. 3).
+    refs: {
+      objection: "بينات: أسئلة وأجوبة عن الإسلام (مركز أصول)",
+      creed: "الموسوعة العقدية (الدرر السنية)",
+      fiqh: "الموسوعة الفقهية (الدرر السنية)",
+      history: "الموسوعة التاريخية (الدرر السنية)",
+      term: "معجم المصطلحات الشرعية",
+    } as Record<string, string>,
+  },
+
+  // Outside Isnad's work, by the Reference Framework: judging specific people or groups.
+  scope: {
+    judgePeople: "إسناد ما يحكم على أشخاص ولا جماعات، وهذا خارج عمله.",
+    ask: "اسأل أهل العلم.",
   },
 
   grade: {

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import {
   AlertTriangle,
+  Ban,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -10,6 +11,7 @@ import {
   ListTree,
   Copy,
   ExternalLink,
+  MessageCircleQuestion,
   OctagonAlert,
   Scale,
 } from "lucide-react";
@@ -39,12 +41,17 @@ export function ResultView({
 
   // The chain always starts with what the reader wrote, so every outcome, including silence,
   // is shown against the description it answers.
-  const describe = (hasText: boolean) => (
+  const describe = (hasText: boolean, marks?: number[]) => (
     <Link label={copy.chain.you} dot="bg-foreground" last={!hasText} broken={!hasText}>
-      <p dir="auto" className="text-lg leading-relaxed">{data.query}</p>
+      <p dir="auto" className="text-lg leading-relaxed">
+        {marks?.length ? <Marked text={data.query} marks={marks} /> : data.query}
+      </p>
+      {marks?.length ? <p className="mt-1.5 text-sm text-daif">{copy.chain.wording}</p> : null}
     </Link>
   );
-  const description = describe(!!result);
+  // A quotation whose words differ from the source's gets those words marked, gently, above the
+  // right text: a Reference Framework test case ("سؤال يتضمن آية منقولة بخطأ").
+  const description = describe(!!result, data.wording?.missing);
 
   // A text opened from a list is shown from the answer already in hand, under the reader's own
   // description. Re-searching the card's text, as before, opened Muslim 176 for a click on Muslim
@@ -96,6 +103,45 @@ export function ResultView({
     );
   }
 
+  // A question about Islam that is not a ruling ("لماذا يعبد المسلمون الكعبة؟", a Reference
+  // Framework test case): the texts that speak to it, then the approved reference for its kind.
+  // Isnad writes no answer; before, these got "إسناد ما يفتي" and a fiqh search for the question.
+  if (verdict === "question") {
+    const texts = data.topic ?? [];
+    return (
+      <div className="space-y-5">
+        <Chain>
+          {description}
+          <Terminal
+            icon={<MessageCircleQuestion className="size-5" />}
+            text={texts.length ? copy.question.texts : copy.question.none}
+          />
+        </Chain>
+        {texts.length > 0 && (
+          <ul className="space-y-3">
+            {texts.map((t) => (
+              <li key={t.id}>
+                <TopicCard record={t} onOpen={onOpen} />
+              </li>
+            ))}
+          </ul>
+        )}
+        <QuestionReferral refer={data.refer} />
+      </div>
+    );
+  }
+
+  // Judging specific people or groups is outside Isnad's work (Reference Framework). Said plainly,
+  // with no texts: a list beside "هل الطائفة الفلانية كفار" would read as an answer.
+  if (verdict === "out_of_scope") {
+    return (
+      <Chain>
+        {description}
+        <Terminal icon={<Ban className="size-5" />} text={copy.scope.judgePeople} sub={copy.scope.ask} />
+      </Chain>
+    );
+  }
+
   if (verdict === "fatwa_request") {
     return (
       <Chain>
@@ -106,13 +152,18 @@ export function ResultView({
   }
 
   if (verdict === "topic" && data.topic?.length) {
-    const lead = data.surah
-      ? data.surah.verses <= data.topic.length
-        ? copy.verdict.surahAll(data.surah.name)
-        : copy.verdict.surahFirst(data.surah.name, data.topic.length, data.surah.verses)
-      : data.topic.length === 1
-        ? copy.verdict.topicOne
-        : copy.verdict.topic;
+    const lk = data.lookup;
+    const lead = lk
+      ? lk.kind === "ayah"
+        ? copy.verdict.lookupVerses(lk.surah, lk.from, lk.to)
+        : copy.verdict.lookupNarrations(lk.ref)
+      : data.surah
+        ? data.surah.verses <= data.topic.length
+          ? copy.verdict.surahAll(data.surah.name)
+          : copy.verdict.surahFirst(data.surah.name, data.topic.length, data.surah.verses)
+        : data.topic.length === 1
+          ? copy.verdict.topicOne
+          : copy.verdict.topic;
     return (
       <div className="space-y-5">
         <Chain>
@@ -181,6 +232,26 @@ export function ResultView({
       <Actions r={r} confidence={data.confidence} />
       {verdict !== "confident" && <Alternatives items={data.alternatives} />}
     </div>
+  );
+}
+
+function Marked({ text, marks }: { text: string; marks: number[] }) {
+  const set = new Set(marks);
+  return (
+    <>
+      {text.split(" ").map((w, i) => (
+        <span key={i}>
+          {i > 0 && " "}
+          {set.has(i) ? (
+            <mark className="bg-transparent text-inherit underline decoration-wavy decoration-daif decoration-2 underline-offset-[6px]">
+              {w}
+            </mark>
+          ) : (
+            w
+          )}
+        </span>
+      ))}
+    </>
   );
 }
 
@@ -255,7 +326,7 @@ function Actions({ r, confidence }: { r: TextRecord; confidence?: number | null 
           <Button variant="outline" size="sm" asChild>
             <a href={r.verify_url} target="_blank" rel="noopener noreferrer">
               <ExternalLink className="size-4" />
-              {copy.chain.verify}
+              {r.kind === "ayah" ? copy.chain.verifyAyah : copy.chain.verify}
             </a>
           </Button>
         )}
@@ -391,8 +462,17 @@ function Ruling({ record }: { record: TextRecord }) {
   );
 }
 
+// The label is al-Albani's ruling when he graded the hadith (scripts/02_normalize.py,
+// PREFERRED_GRADER), so he is the one named. Taking the first grader with the same words named
+// Abu Ghuddah under al-Albani's label for al-Nasa'i 3104 (judge test, 2026-10-06).
+const PREFERRED_GRADER = "الألباني";
+
 function mainGrader(r: TextRecord) {
-  return r.graders.find((x) => x.grade === r.grade) ?? r.graders[0];
+  return (
+    r.graders.find((x) => x.grader === PREFERRED_GRADER && x.grade === r.grade) ??
+    r.graders.find((x) => x.grade === r.grade) ??
+    r.graders[0]
+  );
 }
 
 function graderNote(r: TextRecord) {
@@ -494,6 +574,30 @@ function Referral({ url }: { url?: string | null }) {
           </Button>
         )}
         <span>{copy.ruling.ask}</span>
+      </div>
+    </aside>
+  );
+}
+
+function QuestionReferral({ refer }: { refer?: SearchResponse["refer"] }) {
+  const name = refer ? copy.question.refs[refer.kind] : undefined;
+  return (
+    <aside className="space-y-2 rounded-lg border bg-card p-4">
+      <p className="flex items-center gap-2 text-lg font-medium">
+        <MessageCircleQuestion className="size-5 text-muted-foreground" />
+        {copy.question.noAnswer}
+      </p>
+      <p className="text-muted-foreground">{copy.question.detail}</p>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+        {refer?.url && name && (
+          <Button variant="outline" size="sm" asChild>
+            <a href={refer.url} target="_blank" rel="noopener noreferrer">
+              <ExternalLink className="size-4" />
+              {name}
+            </a>
+          </Button>
+        )}
+        <span>{copy.question.ask}</span>
       </div>
     </aside>
   );

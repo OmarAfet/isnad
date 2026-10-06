@@ -37,6 +37,37 @@ def fiqh_url(question):
     return FIQH_SEARCH.format(quote(" ".join(words[:6])))
 
 
+# WHERE A QUESTION ABOUT ISLAM IS SENT. Every target is a reference the Reference Framework approves
+# for that kind of content (p. 3). Checked 2026-10-06: dawa.center/file/7937 is "بينات: أسئلة وأجوبة
+# عن الإسلام" (مركز أصول), HTTP 200, with an English page at ?lang=en; islamic-content.com/dictionary
+# is "معجم المصطلحات الشرعية", HTTP 200. The dorar.net encyclopedias answer automated requests with
+# 403 (Cloudflare), so their home pages, as the framework writes them, are linked, never a search.
+REFER = {
+    "objection": "https://dawa.center/file/7937",
+    "creed": "https://dorar.net/aqeeda",
+    "fiqh": FIQH_HOME,
+    "history": "https://dorar.net/history",
+    "term": "https://islamic-content.com/dictionary",
+}
+
+
+def refer_url(kind, lang=None):
+    url = REFER.get(kind, REFER["objection"])
+    if kind == "objection" and lang and lang != "ar":
+        url += "?lang=fr" if lang == "fr" else "?lang=en"
+    return url
+
+
+# A VERSE IS CHECKED AT THE MUSHAF REFERENCE THE FRAMEWORK NAMES FOR THE QUR'AN, quranpedia.net, where
+# the page shows the verse with its tafsir. Checked 2026-10-06: /ayahs/2/255, /ayahs/112/1 and
+# /ayahs/51/56 redirect (301) to /tafsir/<surah>/<ayah>, HTTP 200, titled with the verse.
+AYAH = "https://quranpedia.net/ayahs/{}/{}"
+
+
+def ayah_url(surah, ayah):
+    return AYAH.format(int(surah), int(ayah))
+
+
 def verify_url(matn_plain):
     """A dorar search link for a hadith matn. Uses a short distinctive window, because dorar's
     search is lexical and a whole long matn returns nothing."""

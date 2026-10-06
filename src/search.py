@@ -16,7 +16,7 @@ record and still answers with the Arabic, because the Arabic is the text and the
 only a way of finding it. Stage one is tuned for RECALL, not for first place: Jev decides which
 candidate is right, and it can only choose from what this hands it.
 """
-import json, math, os, sqlite3, sys
+import json, math, os, re, sqlite3, sys
 from collections import Counter, defaultdict
 
 import numpy as np
@@ -25,7 +25,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 INDEX = os.path.join(HERE, "..", "data", "index")
 sys.path.insert(0, os.path.join(HERE, "..", "scripts"))
 from _arabic import join_open_tanween, normalize, plain, split_commentary   # noqa: E402
-from _dorar import verify_url                 # noqa: E402
+from _dorar import ayah_url, verify_url       # noqa: E402
 from _lang import detect                      # noqa: E402
 from _surfaces import surface_text            # noqa: E402
 
@@ -78,6 +78,63 @@ MIN_PER_KIND = 12
 def _book_rank(rid):
     book, _, num = rid.partition(":")
     return BOOK_RANK.get(book, 2), int(num) if num.isdigit() else 10 ** 9
+
+
+# CITATION LOOKUP (Isnad.lookup). Words that may surround a reference without changing it, in
+# normalized form. Anything else in the query means it is a description, and it is searched.
+_DIGITS = str.maketrans("٠١٢٣٤٥٦٧٨٩۰۱۲۳۴۵۶۷۸۹", "0123456789" * 2)
+_REF_NO = re.compile(r"\((\d+)\)\s*$")
+MAX_LOOKUP_VERSES = 20
+_ASK = {"اعطني", "عطني", "ابي", "ابغي", "هات", "وش", "ايش", "نص", "اعرض", "اقرا", "ما", "هي",
+        "لي", "فسر", "تفسير", "اشرح", "شرح"}
+_Q_FILLER = _ASK | {"سوره", "السوره", "سورت", "ايه", "الايه", "ايات", "الايات", "رقم", "من",
+                    "الي", "في", "و", "قران", "القران", "الكريم", "quran", "qur", "an", "koran",
+                    "surah", "sura", "surat", "ayah", "ayat", "aya", "verse", "verses", "chapter",
+                    "from", "to", "of", "the", "al", "and"}
+_SURAH_WORDS = {"سوره", "السوره", "surah", "sura", "surat", "chapter"}
+_H_FILLER = _ASK | {"حديث", "الحديث", "رقم", "رواه", "اخرجه", "في", "صحيح", "سنن", "جامع",
+                    "الجامع", "كتاب", "الامام", "عند", "hadith", "hadeeth", "hadis", "number",
+                    "no", "num", "nr", "sahih", "saheeh", "sunan", "jami", "al", "at", "an", "as",
+                    "the", "in", "of", "imam", "narrated", "by", "ref", "reference", "book"}
+_COLLECTION_KEYS = {tuple(normalize(name).lower().split()): key for key, names in {
+    "bukhari": ["البخاري", "بخاري", "bukhari", "albukhari", "bukhary"],
+    "muslim": ["مسلم", "muslim"],
+    "abudawud": ["أبو داود", "أبي داود", "ابوداود", "abu dawud", "abu dawood", "abu daud",
+                 "abi dawud", "abudawud", "abu dawoud"],
+    "tirmidhi": ["الترمذي", "ترمذي", "tirmidhi", "tirmizi", "tirmithi"],
+    "nasai": ["النسائي", "نسائي", "nasai", "nasa i", "nisai", "nasaee"],
+    "ibnmajah": ["ابن ماجه", "ابن ماجة", "ibn majah", "ibn maja", "ibnmajah", "ibn majjah"],
+}.items() for name in names}
+# Other names readers use for a surah. Only names no other surah or word shares.
+SURAH_ALIASES = {"براءة": 9, "بني إسرائيل": 17, "المؤمن": 40, "حم السجدة": 41, "القتال": 47,
+                 "الدهر": 76, "عم": 78, "الانشراح": 94, "تبت": 111, "اللهب": 111}
+# Verses known by a name drawn from their own words: 2:282 "إذا تداينتم بدين", 5:6 "إذا قمتم إلى
+# الصلاة فاغسلوا", 3:61 "ثم نبتهل", 24:35 "الله نور السماوات"; 2:285-286 are the last two of
+# al-Baqarah's 286. "آية الحجاب" is left to search: readers mean 33:53, 33:59 or 24:31.
+NAMED_VERSES = {normalize(k).lower(): v for k, v in {
+    "آية الكرسي": (2, 255, 255), "ayat al kursi": (2, 255, 255), "ayatul kursi": (2, 255, 255),
+    "ayat ul kursi": (2, 255, 255), "verse of the throne": (2, 255, 255),
+    "the throne verse": (2, 255, 255),
+    "آية الدين": (2, 282, 282), "آية المداينة": (2, 282, 282),
+    "خواتيم البقرة": (2, 285, 286), "خواتيم سورة البقرة": (2, 285, 286),
+    "خواتيم سوره البقره": (2, 285, 286), "آخر آيتين من سورة البقرة": (2, 285, 286),
+    "آخر آيتين في سورة البقرة": (2, 285, 286), "آخر آيتين من البقرة": (2, 285, 286),
+    "الآيتان من آخر سورة البقرة": (2, 285, 286), "last two verses of al baqarah": (2, 285, 286),
+    "آية النور": (24, 35, 35), "آية الوضوء": (5, 6, 6), "آية المباهلة": (3, 61, 61),
+}.items()}
+_NAMED_FILLER = _ASK
+
+
+def _find_name(toks, table, filler):
+    """A name from `table` (token tuples) inside toks, longest first, such that every other token
+    is filler: (value, (i, j)). "شرح البقرة 255" holds two names ("شرح" is الشرح without its
+    article); only البقرة leaves filler around it."""
+    for n in (3, 2, 1):
+        for i in range(len(toks) - n + 1):
+            v = table.get(tuple(toks[i:i + n]))
+            if v is not None and all(t in filler for t in toks[:i] + toks[i + n:]):
+                return v, (i, i + n)
+    return None
 
 
 def literal_query(text):
@@ -434,14 +491,90 @@ class Isnad:
         r["query_language"] = lang
         r["wanted_kind"] = kind
         r["variants"] = []
-        r["verify_url"] = (verify_url(plain(r.get("matn") or ""))
-                           if r["kind"] == "hadith" else None)
+        # A verse links to the approved mushaf reference, where its tafsir is one click away; a
+        # verse had no link out at all, so "فسر لي آية الكرسي" got the verse and nowhere to go.
+        r["verify_url"] = (verify_url(plain(r.get("matn") or "")) if r["kind"] == "hadith"
+                           else ayah_url(*r["id"].split(":")[1:3]))
         # The matching text: plain script for a verse, where the Uthmani display spells words
         # differently ("وَٱخۡتِلَٰفُ" normalizes to "واختلف"), the normalized matn for a hadith.
         ar = self.lang_index("ar")
         pos = self._ar_pos.get(ri)
         r["surface"] = ar["bm25_docs"][pos] if pos is not None else normalize(r.get("matn") or "")
         return r
+
+    # A CITATION IS LOOKED UP, NOT SEARCHED. A reader checking a reference types it: "البقرة 255",
+    # "2:255", "البخاري 6018", "مسلم 2564". All of these came back "not found" (judge test,
+    # 2026-10-06): a description search has nothing to match in a number. A query made only of a
+    # surah or book name, numbers and filler words is answered from the reference itself; Jev is
+    # not asked, because there is nothing to judge. Hadith numbers are the ones each reference
+    # shows, so Muslim is looked up by Abd al-Baqi's numbers, as it is cited.
+    def lookup(self, query):
+        q = (query or "").translate(_DIGITS)
+        toks = normalize(q).lower().split()
+        nums = [int(t) for t in toks if t.isdigit()]
+        rest = [t for t in toks if not t.isdigit()]
+        if not nums and not rest:
+            return None
+        self._lookup_tables()
+        # A verse known by a name drawn from its own words ("آية الدين": إذا تداينتم بدين).
+        named = NAMED_VERSES.get(" ".join(t for t in rest if t not in _NAMED_FILLER))
+        if named and not nums:
+            return self._verses(*named)
+        if not nums or len(nums) > 3:
+            return None
+        explicit = re.search(r"(\d{1,3})\s*[:：/]\s*(\d{1,3})(?:\s*[-–—]\s*(\d{1,3}))?", q)
+        span = _find_name(rest, self._surah_no, _Q_FILLER)
+        if span:
+            s = span[0]
+            if len(nums) == 1:
+                return self._verses(s, nums[0], nums[0])
+            if len(nums) == 2 and nums[0] == s and explicit:      # "البقرة 2:255"
+                return self._verses(s, nums[1], nums[1])
+            if len(nums) == 2:
+                return self._verses(s, nums[0], nums[1])
+            return None
+        if explicit and all(t in _Q_FILLER for t in rest):
+            a, b, c = explicit.groups()
+            return self._verses(int(a), int(b), int(c or b))
+        span = _find_name(rest, _COLLECTION_KEYS, _H_FILLER)
+        if span and len(nums) == 1:
+            found = self._by_ref.get((span[0], nums[0]))
+            if found:
+                return {"kind": "hadith", "ref": self.recs[found[0]]["ref"], "count": len(found),
+                        "records": [self._full(i, 1.0, "ar", "ar", "hadith") for i in found]}
+        # "سورة 2 آية 255": numbers only, with the words that say which is which.
+        if len(nums) == 2 and rest and all(t in _Q_FILLER for t in rest) and \
+                any(t in _SURAH_WORDS for t in rest):
+            return self._verses(nums[0], nums[1], nums[1])
+        return None
+
+    def _lookup_tables(self):
+        if getattr(self, "_surah_no", None) is not None:
+            return
+        self._surah_no, self._ayahs, self._by_ref = {}, defaultdict(dict), defaultdict(list)
+        for i, r in enumerate(self.recs):
+            if r["kind"] == "ayah":
+                _, s, a = r["id"].split(":")
+                self._ayahs[int(s)][int(a)] = i
+                name = tuple(normalize(r.get("surah_name") or "").split())
+                if name:
+                    self._surah_no[name] = int(s)
+                    if name[0].startswith("ال") and len(name[0]) > 3:
+                        self._surah_no[(name[0][2:],) + name[1:]] = int(s)
+            else:
+                m = _REF_NO.search(r.get("ref") or "")
+                if m:
+                    self._by_ref[(r["collection_key"], int(m.group(1)))].append(i)
+        for alias, s in SURAH_ALIASES.items():
+            self._surah_no.setdefault(tuple(normalize(alias).split()), s)
+
+    def _verses(self, s, a, b):
+        ayahs = self._ayahs.get(s) or {}
+        if not ayahs or a not in ayahs or b not in ayahs or b < a or b - a >= MAX_LOOKUP_VERSES:
+            return None
+        recs = [self._full(ayahs[n], 1.0, "ar", "ar", "ayah") for n in range(a, b + 1)]
+        return {"kind": "ayah", "surah": recs[0].get("surah_name"), "from": a, "to": b,
+                "records": recs}
 
     # A SURAH NAMED ON ITS OWN ("سورة الإخلاص") is a lookup, not a search: the judges' battery got
     # "nothing found" for it. Its verses come back in order; Jev is not asked.

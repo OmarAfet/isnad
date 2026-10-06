@@ -35,7 +35,7 @@ sys.path.insert(0, HERE)
 sys.path.insert(0, os.path.join(HERE, "..", "scripts"))
 
 from _arabic import join_open_tanween, normalize, plain, split_commentary  # noqa: E402
-from _dorar import verify_url                              # noqa: E402
+from _dorar import ayah_url, verify_url                    # noqa: E402
 from cascade import (FATWA_INSTRUCTIONS, FATWA_THRESHOLD, HIGH, LOW, MAX_CAND_CHARS,  # noqa: E402
                      NO_MATCH, NO_MATCH_DESC, PICK_INSTRUCTIONS, RELEVANCE_INSTRUCTIONS,
                      SPECIFIC_INSTRUCTIONS, TOPIC_MAX, TOPIC_MIN_REL, TOPIC_SPECIFIC,
@@ -136,8 +136,8 @@ class Corpus:
             r["matn"], r["commentary"] = split_commentary(r.get("matn") or "")
         r["variants"] = [{"id": ix.recs[c]["id"], "ref": ix.recs[c]["ref"],
                           "grade": ix.recs[c].get("grade")} for c in it["copies"]]
-        r["verify_url"] = (verify_url(plain(r.get("matn") or ""))
-                           if r["kind"] == "hadith" else None)
+        r["verify_url"] = (verify_url(plain(r.get("matn") or "")) if r["kind"] == "hadith"
+                           else ayah_url(*r["id"].split(":")[1:3]))
         r["_item"] = item_index
         return r
 

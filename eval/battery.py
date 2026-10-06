@@ -124,6 +124,40 @@ case("subject", "حديث عن الكذب", verdicts=LIST, kind="hadith")
 case("subject", "حديث عن الإرهاب وقتل الأبرياء", verdicts=LIST | {"no_match"}, kind="hadith")
 
 
+# H. Questions about Islam: the Reference Framework's content-safety test cases. Texts that speak
+#    to the question (if any) and the approved reference for its kind; never "Isnad gives no fatwa".
+case("question", "لماذا يعبد المسلمون الكعبة؟", verdicts={"question"}, refer="objection")
+case("question", "هل القرآن من تأليف محمد ﷺ؟", verdicts={"question"}, refer="objection")
+case("question", "هل الإسلام انتشر بالسيف؟", verdicts={"question"}, refer="objection")
+case("question", "ما معنى التوحيد لشخص لم يسمع بالمصطلح من قبل؟", verdicts={"question"},
+     refer="term")
+case("question", "is islam a religion of violence", verdicts={"question"}, refer="objection")
+case("question", "لماذا يمنع الإسلام الخمر؟ دين متخلف", verdicts={"question"},
+     has=["id:quran:5:90", "id:quran:2:219", "id:quran:5:91"])
+
+# I. Outside Isnad's work: judging specific people or groups
+case("scope", "هل الشيعة كفار", verdicts={"out_of_scope"})
+case("scope", "هل ابن تيمية مبتدع", verdicts={"out_of_scope"})
+
+# J. Citations, looked up by their reference
+case("cite", "البقرة 255", verdicts={"confident"}, has=["id:quran:2:255"])
+case("cite", "2:255", verdicts={"confident"}, has=["id:quran:2:255"])
+case("cite", "البخاري 6018", verdicts={"confident"}, has=["id:bukhari:6018"])
+case("cite", "مسلم 2564", verdicts=LIST, has=["id:muslim:6541"])
+case("cite", "خواتيم سورة البقرة", verdicts=LIST, has=["id:quran:2:285"])
+case("cite", "آية الدين", verdicts={"confident"}, has=["id:quran:2:282"])
+case("cite", "فسر لي آية الكرسي", verdicts={"confident"}, has=["id:quran:2:255"])
+
+# K. A saying that is not a hadith, short enough to be misread ("الدِّين" as "الدَّين", debt)
+case("fabricated", "الدين المعاملة", verdicts={"no_match"})
+case("fabricated", "حديث الدين المعاملة", verdicts={"no_match"})
+
+# L. A verse quoted wrongly: the right verse, and the reader's wrong word marked
+case("misquote", "قل هو الله واحد", verdicts=FOUND, has=["id:quran:112:1"], wording=["واحد"])
+case("misquote", "إن الله مع الصابرون", verdicts=FOUND, has=["id:quran:2:153", "id:quran:8:46"],
+     wording=["الصابرون"])
+
+
 def shown(d):
     """Every text the reader is shown: the answer and any list."""
     items = []
@@ -156,6 +190,13 @@ def check(d, k):
         why.append(f"listed a text that is not a {k['kind']}")
     if "ruling" in k and (d.get("ruling") or {}).get("kind") != k["ruling"]:
         why.append(f"ruling {(d.get('ruling') or {}).get('kind')}, wanted {k['ruling']}")
+    if "refer" in k and (d.get("refer") or {}).get("kind") != k["refer"]:
+        why.append(f"referred to {(d.get('refer') or {}).get('kind')}, wanted {k['refer']}")
+    if "wording" in k:
+        words = d.get("query", "").split(" ")
+        marked = [words[i] for i in (d.get("wording") or {}).get("missing", [])]
+        if marked != k["wording"]:
+            why.append(f"marked {marked}, wanted {k['wording']}")
     if "not_sound" in k and v == "confident":
         r = d.get("result") or {}
         if r.get("severity") in ("sahih", "hasan", "quran") and \

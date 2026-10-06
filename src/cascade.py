@@ -370,9 +370,40 @@ def _groups(candidates, size=GROUP):
     return [candidates[i:i + size] for i in range(0, len(candidates), size)]
 
 
+class _Counting:
+    """The client, counting the input tokens of every request a search makes. Jev is charged per
+    input token ($0.042 per million, output free: docs.typesafe.ai/models, read 2026-10-06), so
+    the cost of a search is measured, not estimated."""
+
+    def __init__(self, client):
+        self.client, self.input_tokens = client, 0
+
+    async def system_one(self, **kw):
+        r = await self.client.system_one(**kw)
+        try:
+            self.input_tokens += int(r.usage.input_tokens)
+        except Exception:
+            pass
+        return r
+
+
 async def run(query, candidates, client=None, net=NET, group=GROUP):
-    """Return the decision. Needs an AsyncTypeSafeClient, or makes its own."""
-    from typesafe_sdk import AsyncTypeSafeClient, Choice, Noul
+    """Return the decision, with the input tokens it used. Needs an AsyncTypeSafeClient, or makes
+    its own."""
+    from typesafe_sdk import AsyncTypeSafeClient
+    own = client is None
+    counting = _Counting(client or AsyncTypeSafeClient())
+    try:
+        d = await _run(query, candidates, counting, net, group)
+    finally:
+        if own:
+            await counting.client.aclose()
+    d["input_tokens"] = counting.input_tokens
+    return d
+
+
+async def _run(query, candidates, client, net=NET, group=GROUP):
+    from typesafe_sdk import Choice, Noul
 
     # Texts search held in reserve for the other kind (search.MIN_PER_KIND) serve ruling lists
     # only. Offered to the single-text choice, they let Jev answer "اختلاف أمتي رحمة", a saying
@@ -394,136 +425,130 @@ async def run(query, candidates, client=None, net=NET, group=GROUP):
     questions["refer"] = Choice(instructions=REFER_INSTRUCTIONS, criteria=REFER_OPTIONS)
     questions["islamic"] = Noul(instructions=ISLAMIC_INSTRUCTIONS)
 
-    own = client is None
-    client = client or AsyncTypeSafeClient()
-    try:
-        r1 = await client.system_one(state=state, questions=questions, model=MODEL)
+    r1 = await client.system_one(state=state, questions=questions, model=MODEL)
 
-        finalists = []
-        for gi in range(len(groups)):
-            a = r1.answers[f"g{gi}"]
-            if a.choice == NO_MATCH or a.choice not in keymaps[f"g{gi}"]:
-                continue
-            rec = keymaps[f"g{gi}"][a.choice]
-            finalists.append((rec, float(a.confidence),
-                              float((a.probabilities or {}).get(a.choice, 0.0))))
-        specific = float(r1.answers["specific_enough"].noul)
-        # Measured (eval/saying_probe.py, 27 descriptions x 2 runs): quoted sayings 0.73-0.92,
-        # subjects 0.05-0.23; 0 of 54 on the wrong side of 0.60.
-        saying = float(r1.answers["saying"].noul)
-        ask = {k: float(v) for k, v in (r1.answers["ask"].probabilities or {}).items()}
+    finalists = []
+    for gi in range(len(groups)):
+        a = r1.answers[f"g{gi}"]
+        if a.choice == NO_MATCH or a.choice not in keymaps[f"g{gi}"]:
+            continue
+        rec = keymaps[f"g{gi}"][a.choice]
+        finalists.append((rec, float(a.confidence),
+                          float((a.probabilities or {}).get(a.choice, 0.0))))
+    specific = float(r1.answers["specific_enough"].noul)
+    # Measured (eval/saying_probe.py, 27 descriptions x 2 runs): quoted sayings 0.73-0.92,
+    # subjects 0.05-0.23; 0 of 54 on the wrong side of 0.60.
+    saying = float(r1.answers["saying"].noul)
+    ask = {k: float(v) for k, v in (r1.answers["ask"].probabilities or {}).items()}
 
-        rounds = 1
-        p_ruling = ask.get("general_ruling", 0.0) + ask.get("personal_case", 0.0)
-        names_kind = bool(cands) and cands[0].get("wanted_kind") is not None
-        words = set(normalize(query).lower().replace("؟", " ").replace("?", " ").split())
-        ruling_word = bool(words & RULING_WORDS)
-        # A reader who names the kind of text ("حديث عن ...", "آية تثبت ...") wants texts, whatever
-        # else the request reads like.
-        if ask.get("judge_people", 0.0) >= JUDGE_THRESHOLD and not names_kind:
-            out = _result("out_of_scope", None, None, None, specific, rounds, len(cands),
-                          len(groups))
-            out["scope"] = "judge_people"
-            return out
-        first = (normalize(query).lower().split() or [""])[0]
-        is_question = "?" in query or "؟" in query or bool(words & QUESTION_WORDS)
-        # Measured (eval/ask_probe2.py, 2 runs): questions about Islam 0.93-0.99, unrelated ones
-        # ("what is the capital of France") 0.01-0.02. Only the question path asks it: "verse about
-        # bees" scored 0.08, because the word "verse" alone does not say Qur'an to it.
-        islamic = float(r1.answers["islamic"].noul)
-        p_question = ask.get("question", 0.0) if is_question and \
-            islamic >= ISLAMIC_THRESHOLD else 0.0
-        # "هل القرآن من تأليف محمد؟" names the Qur'an as its subject, not as the kind of text it
-        # wants: a request that opens with a question word is a question whatever it names.
-        if p_question > p_ruling and first in QUESTION_WORDS:
-            names_kind = False
-        if p_ruling + p_question >= RULING_THRESHOLD and (ruling_word or not names_kind):
-            if p_question > p_ruling and not ruling_word:
-                refer = r1.answers["refer"].choice
-                return await _ruling(client, query, candidates, "question", p_question, specific,
-                                     len(groups), refer=refer if refer in REFER_OPTIONS else
-                                     "objection")
-            kind = ("personal" if ask.get("personal_case", 0.0) >= ask.get("general_ruling", 0.0)
-                    else "general")
-            return await _ruling(client, query, candidates, kind, p_ruling, specific, len(groups))
-        # A broad description goes to topic mode even when every group answered no_match: the
-        # pick question asks for ONE text, and for "حديث عن الكذب" no single text is the one, so
-        # all ten groups can rightly decline. Exiting here reported "nothing found" for a subject
-        # the shortlist covered (seen 2026-10-05 once the shortlist changed; round two never ran).
-        topic_pool = _topic_pool(cands) if specific < TOPIC_SPECIFIC and \
-            saying < SAYING_THRESHOLD else []
-        if not finalists and not topic_pool:
-            return _result("no_match", None, 1.0, None, specific, rounds, len(cands), len(groups))
-
-        # Order finalists by round-one confidence so the strongest candidates survive the cap.
-        finalists.sort(key=lambda t: -t[1])
-        short = [f[0] for f in finalists[:MAX_FINALISTS]]
-
-        q2, km = {}, {}
-        state2 = dict(state)
-        if short:
-            crit, km = _criteria(short)
-            q2["pick"] = Choice(instructions=PICK_INSTRUCTIONS, criteria=crit)
-        for i, c in enumerate(topic_pool):
-            q2[f"t{i}"] = Noul(instructions=_judge(RELEVANCE_INSTRUCTIONS, c))
-        if not q2:
-            return _result("no_match", None, 1.0, None, specific, rounds, len(cands), len(groups))
-
-        r2 = await client.system_one(state=state2, questions=q2, model=MODEL)
-        rounds = 2
-
-        specific_answer = None
-        if "pick" in q2:
-            pick = r2.answers["pick"]
-            conf = float(pick.confidence)
-            probs = {k: float(v) for k, v in (pick.probabilities or {}).items()}
-            if pick.choice != NO_MATCH and pick.choice in km:
-                rec = km[pick.choice]
-                family = [k for k in km if k != pick.choice and _same_report(km[k], rec)]
-                p_report = probs.get(pick.choice, 0.0) + sum(probs.get(k, 0.0) for k in family)
-                # The verdict rests on the probability of the REPORT. Jev's own confidence
-                # statistic measures how concentrated the distribution is, and a distribution
-                # split between two copies of one hadith is concentrated on one answer even
-                # though it looks spread.
-                verdict = ("confident" if p_report >= HIGH else "tentative" if p_report >= LOW
-                           else "unsure")
-                specific_answer = _result(
-                    verdict, rec, p_report, probs.get(pick.choice), specific, rounds,
-                    len(cands), len(groups),
-                    probabilities={(km[k]["id"] if k in km else k): v for k, v in probs.items()})
-                specific_answer["jev_confidence"] = conf
-                specific_answer["family"] = [km[k]["id"] for k in family]
-                # The reader named a kind and Jev, short of confident, picked the other kind:
-                # that is not an answer to the request. "أعطني حديثا يثبت أن الأرض مسطحة" - a
-                # Reference Framework test case - came back once with 88:20 as "tentative". A
-                # confident pick of the other kind is kept: "حديث لا إكراه في الدين" is a verse.
-                wanted = cands[0].get("wanted_kind") if cands else None
-                if wanted and rec.get("kind") != wanted and verdict != "confident":
-                    specific_answer = None
-                elif cands and cands[0].get("query_language") == "ar" and not _quote_ok(query, rec):
-                    specific_answer = None
-
-        # A broad description that still pointed clearly at one text gets that text.
-        if specific_answer and (specific_answer["verdict"] == "confident" or not topic_pool):
-            return specific_answer
-
-        if topic_pool:
-            scored = [(c, float(r2.answers[f"t{i}"].noul)) for i, c in enumerate(topic_pool)]
-            relevant = _dedupe([(c, p) for c, p in scored if p >= TOPIC_MIN_REL])
-            if relevant:
-                relevant.sort(key=lambda cp: (_GRADE_ORDER.get(cp[0].get("severity") or
-                                                               "unknown", 1), -cp[1]))
-                out = _result("topic", None, None, None, specific, rounds, len(cands),
-                              len(groups))
-                out["topic"] = [{"record": c, "relevance": p} for c, p in relevant[:TOPIC_MAX]]
-                return out
-
-        if specific_answer:
-            return specific_answer
+    rounds = 1
+    p_ruling = ask.get("general_ruling", 0.0) + ask.get("personal_case", 0.0)
+    names_kind = bool(cands) and cands[0].get("wanted_kind") is not None
+    words = set(normalize(query).lower().replace("؟", " ").replace("?", " ").split())
+    ruling_word = bool(words & RULING_WORDS)
+    # A reader who names the kind of text ("حديث عن ...", "آية تثبت ...") wants texts, whatever
+    # else the request reads like.
+    if ask.get("judge_people", 0.0) >= JUDGE_THRESHOLD and not names_kind:
+        out = _result("out_of_scope", None, None, None, specific, rounds, len(cands),
+                      len(groups))
+        out["scope"] = "judge_people"
+        return out
+    first = (normalize(query).lower().split() or [""])[0]
+    is_question = "?" in query or "؟" in query or bool(words & QUESTION_WORDS)
+    # Measured (eval/ask_probe2.py, 2 runs): questions about Islam 0.93-0.99, unrelated ones
+    # ("what is the capital of France") 0.01-0.02. Only the question path asks it: "verse about
+    # bees" scored 0.08, because the word "verse" alone does not say Qur'an to it.
+    islamic = float(r1.answers["islamic"].noul)
+    p_question = ask.get("question", 0.0) if is_question and \
+        islamic >= ISLAMIC_THRESHOLD else 0.0
+    # "هل القرآن من تأليف محمد؟" names the Qur'an as its subject, not as the kind of text it
+    # wants: a request that opens with a question word is a question whatever it names.
+    if p_question > p_ruling and first in QUESTION_WORDS:
+        names_kind = False
+    if p_ruling + p_question >= RULING_THRESHOLD and (ruling_word or not names_kind):
+        if p_question > p_ruling and not ruling_word:
+            refer = r1.answers["refer"].choice
+            return await _ruling(client, query, candidates, "question", p_question, specific,
+                                 len(groups), refer=refer if refer in REFER_OPTIONS else
+                                 "objection")
+        kind = ("personal" if ask.get("personal_case", 0.0) >= ask.get("general_ruling", 0.0)
+                else "general")
+        return await _ruling(client, query, candidates, kind, p_ruling, specific, len(groups))
+    # A broad description goes to topic mode even when every group answered no_match: the
+    # pick question asks for ONE text, and for "حديث عن الكذب" no single text is the one, so
+    # all ten groups can rightly decline. Exiting here reported "nothing found" for a subject
+    # the shortlist covered (seen 2026-10-05 once the shortlist changed; round two never ran).
+    topic_pool = _topic_pool(cands) if specific < TOPIC_SPECIFIC and \
+        saying < SAYING_THRESHOLD else []
+    if not finalists and not topic_pool:
         return _result("no_match", None, 1.0, None, specific, rounds, len(cands), len(groups))
-    finally:
-        if own:
-            await client.aclose()
+
+    # Order finalists by round-one confidence so the strongest candidates survive the cap.
+    finalists.sort(key=lambda t: -t[1])
+    short = [f[0] for f in finalists[:MAX_FINALISTS]]
+
+    q2, km = {}, {}
+    state2 = dict(state)
+    if short:
+        crit, km = _criteria(short)
+        q2["pick"] = Choice(instructions=PICK_INSTRUCTIONS, criteria=crit)
+    for i, c in enumerate(topic_pool):
+        q2[f"t{i}"] = Noul(instructions=_judge(RELEVANCE_INSTRUCTIONS, c))
+    if not q2:
+        return _result("no_match", None, 1.0, None, specific, rounds, len(cands), len(groups))
+
+    r2 = await client.system_one(state=state2, questions=q2, model=MODEL)
+    rounds = 2
+
+    specific_answer = None
+    if "pick" in q2:
+        pick = r2.answers["pick"]
+        conf = float(pick.confidence)
+        probs = {k: float(v) for k, v in (pick.probabilities or {}).items()}
+        if pick.choice != NO_MATCH and pick.choice in km:
+            rec = km[pick.choice]
+            family = [k for k in km if k != pick.choice and _same_report(km[k], rec)]
+            p_report = probs.get(pick.choice, 0.0) + sum(probs.get(k, 0.0) for k in family)
+            # The verdict rests on the probability of the REPORT. Jev's own confidence
+            # statistic measures how concentrated the distribution is, and a distribution
+            # split between two copies of one hadith is concentrated on one answer even
+            # though it looks spread.
+            verdict = ("confident" if p_report >= HIGH else "tentative" if p_report >= LOW
+                       else "unsure")
+            specific_answer = _result(
+                verdict, rec, p_report, probs.get(pick.choice), specific, rounds,
+                len(cands), len(groups),
+                probabilities={(km[k]["id"] if k in km else k): v for k, v in probs.items()})
+            specific_answer["jev_confidence"] = conf
+            specific_answer["family"] = [km[k]["id"] for k in family]
+            # The reader named a kind and Jev, short of confident, picked the other kind:
+            # that is not an answer to the request. "أعطني حديثا يثبت أن الأرض مسطحة" - a
+            # Reference Framework test case - came back once with 88:20 as "tentative". A
+            # confident pick of the other kind is kept: "حديث لا إكراه في الدين" is a verse.
+            wanted = cands[0].get("wanted_kind") if cands else None
+            if wanted and rec.get("kind") != wanted and verdict != "confident":
+                specific_answer = None
+            elif cands and cands[0].get("query_language") == "ar" and not _quote_ok(query, rec):
+                specific_answer = None
+
+    # A broad description that still pointed clearly at one text gets that text.
+    if specific_answer and (specific_answer["verdict"] == "confident" or not topic_pool):
+        return specific_answer
+
+    if topic_pool:
+        scored = [(c, float(r2.answers[f"t{i}"].noul)) for i, c in enumerate(topic_pool)]
+        relevant = _dedupe([(c, p) for c, p in scored if p >= TOPIC_MIN_REL])
+        if relevant:
+            relevant.sort(key=lambda cp: (_GRADE_ORDER.get(cp[0].get("severity") or
+                                                           "unknown", 1), -cp[1]))
+            out = _result("topic", None, None, None, specific, rounds, len(cands),
+                          len(groups))
+            out["topic"] = [{"record": c, "relevance": p} for c, p in relevant[:TOPIC_MAX]]
+            return out
+
+    if specific_answer:
+        return specific_answer
+    return _result("no_match", None, 1.0, None, specific, rounds, len(cands), len(groups))
 
 
 async def _ruling(client, query, cands, kind, p, specific, n_groups, refer=None):

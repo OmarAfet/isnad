@@ -115,6 +115,8 @@ Machine has 9 GB RAM: never run two embedding jobs at once.
 - Relevance judging (`eval/relevance_probe.py`): text inside each question, "same sense"
   wording, bar 0.75; right texts 0.80+. Request classifier (`eval/ask_probe.py`): 0/36 wrong.
 - Trace one query without Jev: `python eval/explain.py "<query>" --expect quran:2:255`.
+- Cost: Jev input tokens per search, battery of 76: mean 23,232, median 24,344, max 37,780
+  -> $0.00098 a search, ~$1 per 1,000 ($0.042/Mtok input, output free; docs.typesafe.ai/models).
 - Session 3 probes: `eval/ask_probe2.py` (5 classes + Islamic gate, 58 descriptions x 2: 108/116
   in class, the rest safe), `eval/saying_probe.py` (54/54), `eval/refer_probe.py` (16/18, the
   other 2 defensible). Production after deploy: battery 76/76 (median 1.0 s), smoke 14/14.

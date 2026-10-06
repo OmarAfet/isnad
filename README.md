@@ -96,6 +96,7 @@ Each number is printed by a script in this repository, which also prints the com
 | What is asked: 5 classes, 58 descriptions x 2 runs | 108 of 116 in the labelled class; the other 8 take a safe path (for example a ruling read as general, not personal) | `eval/ask_probe2.py` |
 | Quoted saying vs subject, 27 descriptions x 2 runs | 54/54 | `eval/saying_probe.py` |
 | Citations looked up | about 20 ms, no model call | `eval/battery.py` (group "cite") |
+| Cost of the decision model per search, 76 questions | 23,232 input tokens mean (median 24,344): $0.00098 a search, about $1 per 1,000 at Jev's $0.042 per million input tokens (output is free) | `eval/battery.py` |
 | Memory, all 9 languages loaded, 3 searches | peak 1.1 GB (was 1.6 GB, and production was killed at the 2 GB limit) | `eval/measure_memory.py` with `ISNAD_ENCODER=onnx` |
 
 ## Limits
@@ -151,7 +152,8 @@ Jev key.
 
 ## Privacy
 
-No accounts, no cookies, no database. A query is sent to TypeSafe for the decision. The API
+No accounts, no cookies, no database. A query is sent to TypeSafe for the decision; TypeSafe
+states that Jev is not trained on customer requests or responses (docs.typesafe.ai/models). The API
 keeps, in memory only, the last 512 answers (so repeated examples are fast) and, for one
 minute, a count of requests per address (30 per minute). In the default mode nothing a reader
 types is written to disk (`api/app.py`). Tests use synthetic queries only.

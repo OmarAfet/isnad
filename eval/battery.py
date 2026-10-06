@@ -232,12 +232,14 @@ def main():
     start = int(a[a.index("--from") + 1]) if "--from" in a else 0
     print(f"RAN: python eval/battery.py --api {api} --gap {gap}" + (f" --only {only}" if only else "")
           + (f" --from {start}" if start else ""))
-    fails, lat = [], []
+    fails, lat, tokens = [], [], []
     for g, q, k in C[start:]:
         if only and only not in g and only not in q:
             continue
         d, ms = call(api, q)
         lat.append(ms)
+        if not d.get("cached") and (d.get("jev") or {}).get("input_tokens") is not None:
+            tokens.append(d["jev"]["input_tokens"])
         why = check(d, k)
         r = d.get("result") or {}
         top = (f"{r.get('ref')} [{r.get('grade')}]" if r else
@@ -250,6 +252,13 @@ def main():
     lat.sort()
     n = len(lat)
     print(f"\n{n - len(fails)}/{n} as expected   median {lat[n // 2]:.0f} ms   max {lat[-1]:.0f} ms")
+    if tokens:
+        # Jev: $0.042 per million input tokens, output free (docs.typesafe.ai/models, 2026-10-06)
+        tokens.sort()
+        mean = sum(tokens) / len(tokens)
+        print(f"Jev input tokens per search ({len(tokens)} uncached): median {tokens[len(tokens) // 2]:,}"
+              f"  mean {mean:,.0f}  max {tokens[-1]:,}  ->  ${mean * 0.042 / 1e6:.5f} per search,"
+              f" ${mean * 0.042 / 1e6 * 1000:.2f} per 1,000")
     sys.exit(1 if fails else 0)
 
 

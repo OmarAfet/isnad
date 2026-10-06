@@ -349,7 +349,9 @@ async def _answer(q, progress=None):
                   for t in (d.get("topic") or [])],
         "jev": {"rounds": d["jev_rounds"], "texts_read": d.get("texts_read", d["net"]),
                 "groups": d["groups"], "confidence": d.get("jev_confidence"),
-                "merged_copies": len(family)},
+                "merged_copies": len(family),
+                # Jev is charged per input token; a citation lookup uses none.
+                "input_tokens": d.get("input_tokens", 0)},
         "timing_ms": {"search": round(t_search) if t_search else None,
                       "decide": round(t_decide), "total": round((time.time() - t0) * 1000)},
         "cached": False,

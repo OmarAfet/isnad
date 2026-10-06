@@ -1,44 +1,68 @@
 {
  "quran": {
   "en": {
-   "edition": "eng-muhammadtaqiudd",
-   "author": "Muhammad Taqi Ud Din Al Hilali And Muhammad Muhsin Khan",
-   "source": "http://tanzil.net"
+   "edition": "english_hilali_khan",
+   "author": "Taqi-ud-Din al-Hilali and Muhammad Muhsin Khan",
+   "source": "https://quranenc.com/en/browse/english_hilali_khan",
+   "publisher": "QuranEnc.com",
+   "version": "1.1.2",
+   "fetched": "2026-10-06"
   },
   "id": {
-   "edition": "ind-kingfahdcomplex",
-   "author": "King Fahd Complex",
-   "source": "https://quranenc.com/check/indonesian_complex/v1.0.0-csv.1 , https://quranenc.com/en/browse/indonesian_complex , https://quranenc.com ,"
+   "edition": "indonesian_complex",
+   "author": "Indonesian Ministry of Religious Affairs (the Complex edition)",
+   "source": "https://quranenc.com/en/browse/indonesian_complex",
+   "publisher": "QuranEnc.com",
+   "version": "1.0.1",
+   "fetched": "2026-10-06"
   },
   "ur": {
-   "edition": "urd-abulaalamaududi",
-   "author": "Abul A Ala Maududi",
-   "source": "http://tanzil.net"
+   "edition": "urdu_junagarhi",
+   "author": "Muhammad Ibrahim Junagarhi",
+   "source": "https://quranenc.com/en/browse/urdu_junagarhi",
+   "publisher": "QuranEnc.com",
+   "version": "1.1.3",
+   "fetched": "2026-10-06"
   },
   "tr": {
-   "edition": "tur-abdulbakigolpin",
-   "author": "Abdulbaki Golpinarli",
-   "source": "http://tanzil.net"
+   "edition": "turkish_rwwad",
+   "author": "Rowwad Translation Center",
+   "source": "https://quranenc.com/en/browse/turkish_rwwad",
+   "publisher": "QuranEnc.com",
+   "version": "1.0.4",
+   "fetched": "2026-10-06"
   },
   "bn": {
-   "edition": "ben-abubakrzakaria",
+   "edition": "bengali_zakaria",
    "author": "Abu Bakr Zakaria",
-   "source": "https://qurancomplex.gov.sa/"
+   "source": "https://quranenc.com/en/browse/bengali_zakaria",
+   "publisher": "QuranEnc.com",
+   "version": null,
+   "fetched": "2026-10-06"
   },
   "fr": {
-   "edition": "fra-islamicfoundati",
-   "author": "Islamic Foundation",
-   "source": "https://quranenc.com/check/french_montada/v1.0.0-csv.1 , https://quranenc.com/en/browse/french_montada , https://quranenc.com ,"
+   "edition": "french_montada",
+   "author": "Noor International Center",
+   "source": "https://quranenc.com/en/browse/french_montada",
+   "publisher": "QuranEnc.com",
+   "version": "1.0.0",
+   "fetched": "2026-10-06"
   },
   "ru": {
-   "edition": "rus-abuadel",
-   "author": "Abu Adel",
-   "source": "http://tanzil.net"
+   "edition": "russian_rwwad",
+   "author": "Rowwad Translation Center",
+   "source": "https://quranenc.com/en/browse/russian_rwwad",
+   "publisher": "QuranEnc.com",
+   "version": null,
+   "fetched": "2026-10-06"
   },
   "ta": {
-   "edition": "tam-abdulhameedbaqa",
-   "author": "Abdulhameed Baqavi",
-   "source": "https://quranenc.com/check/tamil_baqavi/v1.0.0-csv.1 , https://quranenc.com/en/browse/tamil_baqavi , https://quranenc.com ,"
+   "edition": "tamil_baqavi",
+   "author": "Abdulhamid Al-Baqawi",
+   "source": "https://quranenc.com/en/browse/tamil_baqavi",
+   "publisher": "QuranEnc.com",
+   "version": "1.0.1",
+   "fetched": "2026-10-06"
   }
  },
  "hadith": {

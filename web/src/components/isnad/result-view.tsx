@@ -360,11 +360,51 @@ function TranslationBlock({ t }: { t: NonNullable<TextRecord["translation"]> }) 
         ) : (
           copy.chain.translatorUnknown
         )}
+        {/* QuranEnc's terms: the publisher, the source and the version are named. */}
+        {t.publisher && (
+          <>
+            {"، "}
+            {t.source_url ? (
+              <a href={t.source_url} target="_blank" rel="noopener noreferrer" className="underline">
+                <bdi>{t.publisher}</bdi>
+              </a>
+            ) : (
+              <bdi>{t.publisher}</bdi>
+            )}
+            {t.version ? (
+              `، ${copy.chain.version(t.version)}`
+            ) : t.fetched ? (
+              // An ISO date inside right-to-left text reads 06-10-2026 unless isolated.
+              <>
+                {`، ${copy.chain.fetched} `}
+                <bdi dir="ltr">{t.fetched}</bdi>
+              </>
+            ) : null}
+          </>
+        )}
       </figcaption>
       <p dir={ltr ? "ltr" : "rtl"} lang={t.lang} className="text-[0.95rem] leading-relaxed">
         {t.text}
       </p>
+      {t.notes && <TranslatorNotes text={t.notes} lang={t.lang} ltr={ltr} />}
     </figure>
+  );
+}
+
+function TranslatorNotes({ text, lang, ltr }: { text: string; lang: string; ltr: boolean }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <Collapsible open={open} onOpenChange={setOpen} className="mt-2">
+      <CollapsibleTrigger className="inline-flex items-center gap-1 text-xs text-primary hover:underline rounded-sm focus-visible:outline-2">
+        {copy.chain.notes}
+        <ChevronDown className={cn("size-3.5 transition-transform", open && "rotate-180")} />
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+        <p dir={ltr ? "ltr" : "rtl"} lang={lang} className="mt-2 whitespace-pre-line text-xs leading-relaxed text-muted-foreground">
+          {text}
+        </p>
+      </CollapsibleContent>
+    </Collapsible>
   );
 }
 

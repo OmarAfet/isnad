@@ -147,6 +147,8 @@ case("cite", "مسلم 2564", verdicts=LIST, has=["id:muslim:6541"])
 case("cite", "خواتيم سورة البقرة", verdicts=LIST, has=["id:quran:2:285"])
 case("cite", "آية الدين", verdicts={"confident"}, has=["id:quran:2:282"])
 case("cite", "فسر لي آية الكرسي", verdicts={"confident"}, has=["id:quran:2:255"])
+case("cite", "the verse of the throne", verdicts={"confident"}, has=["id:quran:2:255"])
+case("cite", "Аят аль-Курси", verdicts={"confident"}, has=["id:quran:2:255"])
 
 # K. A saying that is not a hadith, short enough to be misread ("الدِّين" as "الدَّين", debt)
 case("fabricated", "الدين المعاملة", verdicts={"no_match"})

@@ -139,6 +139,7 @@ def _limited(ip):
 # a translation: 502 Bengali hadith entries are (al-Bukhari 6114's is only the Arabic chapter
 # heading "لقول الله تعالى ..."), counted 2026-10-06. Shown, it was labelled "the published
 # Bengali translation". No translation is better than a wrong one; the entry still serves search.
+_TAG = re.compile(r"<[^>]+>")
 _ARABIC_LETTER = re.compile(r"[\u0600-\u06FF]")
 _LETTER = re.compile(r"\w")
 
@@ -162,9 +163,19 @@ def _translation(rec, lang):
     else:
         meta = tr["hadith"].get(lang, {}).get(rec.get("collection_key"), {})
     author = meta.get("author") or ""
+    notes = (rec.get("notes") or {}).get(lang) or None
+    # QuranEnc's Bengali edition marks headings with <b>...</b> (333 places): the page shows text,
+    # so the tags would show as characters. The words stay; only the markup goes.
+    text = _TAG.sub("", text)
+    notes = _TAG.sub("", notes) if notes else None
+    # QuranEnc's terms: name the publisher and the source, and state the version.
     return {"lang": lang, "text": text,
             "translator": None if author in ("", "Unknown") else author,
-            "edition": meta.get("edition")}
+            "edition": meta.get("edition"),
+            "publisher": meta.get("publisher"), "source_url": meta.get("source")
+            if meta.get("publisher") else None,
+            "version": meta.get("version"), "fetched": meta.get("fetched"),
+            "notes": notes}
 
 
 def _shape(rec, lang):

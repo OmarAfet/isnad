@@ -113,18 +113,38 @@ SURAH_ALIASES = {"براءة": 9, "بني إسرائيل": 17, "المؤمن": 4
 # Verses known by a name drawn from their own words: 2:282 "إذا تداينتم بدين", 5:6 "إذا قمتم إلى
 # الصلاة فاغسلوا", 3:61 "ثم نبتهل", 24:35 "الله نور السماوات"; 2:285-286 are the last two of
 # al-Baqarah's 286. "آية الحجاب" is left to search: readers mean 33:53, 33:59 or 24:31.
-NAMED_VERSES = {normalize(k).lower(): v for k, v in {
-    "آية الكرسي": (2, 255, 255), "ayat al kursi": (2, 255, 255), "ayatul kursi": (2, 255, 255),
-    "ayat ul kursi": (2, 255, 255), "verse of the throne": (2, 255, 255),
-    "the throne verse": (2, 255, 255),
+_KURSI = (2, 255, 255)
+_NAMED = {
+    # Ayat al-Kursi by the names readers use in the eight other languages. "the verse of the
+    # throne" was answered with 27:26 ("رب العرش العظيم") and "Аят аль-Курси" with "not found"
+    # (judge test, 2026-10-06); normalize() keeps only Arabic and plain Latin letters, so these
+    # names are keyed by _name_key, which keeps every script.
+    "آية الكرسي": _KURSI, "آیت الکرسی": _KURSI, "ayat al kursi": _KURSI, "ayatul kursi": _KURSI,
+    "ayat ul kursi": _KURSI, "ayat kursi": _KURSI, "ayatal kursi": _KURSI, "kursi verse": _KURSI,
+    "verse of the throne": _KURSI, "throne verse": _KURSI, "аят аль-курси": _KURSI,
+    "аятуль курси": _KURSI, "аят курси": _KURSI, "аят ал-курси": _KURSI, "ayetel kürsi": _KURSI,
+    "ayet el kürsi": _KURSI, "ayetül kürsi": _KURSI, "ayetel kursi": _KURSI,
+    "verset du trône": _KURSI, "verset du trone": _KURSI, "আয়াতুল কুরসি": _KURSI,
+    "আয়াতুল কুরসী": _KURSI, "ஆயத்துல் குர்ஸி": _KURSI,
     "آية الدين": (2, 282, 282), "آية المداينة": (2, 282, 282),
     "خواتيم البقرة": (2, 285, 286), "خواتيم سورة البقرة": (2, 285, 286),
     "خواتيم سوره البقره": (2, 285, 286), "آخر آيتين من سورة البقرة": (2, 285, 286),
     "آخر آيتين في سورة البقرة": (2, 285, 286), "آخر آيتين من البقرة": (2, 285, 286),
     "الآيتان من آخر سورة البقرة": (2, 285, 286), "last two verses of al baqarah": (2, 285, 286),
     "آية النور": (24, 35, 35), "آية الوضوء": (5, 6, 6), "آية المباهلة": (3, 61, 61),
-}.items()}
-_NAMED_FILLER = _ASK
+}
+_NAMED_FILLER = _ASK | {"the", "le", "la", "l"}
+_ARABIC = re.compile(r"[\u0600-\u06FF]")
+
+
+def _name_key(q):
+    """A verse's name as a lookup key: Arabic normalized as everywhere else, other scripts only
+    lowercased with punctuation removed, request words and articles dropped."""
+    text = normalize(q) if _ARABIC.search(q or "") else re.sub(r"[^\w]+", " ", (q or ""))
+    return " ".join(t for t in text.lower().split() if t not in _NAMED_FILLER)
+
+
+NAMED_VERSES = {_name_key(k): v for k, v in _NAMED.items()}
 
 
 def _find_name(toks, table, filler):
@@ -391,10 +411,21 @@ class Isnad:
         if rec_id.startswith("quran:"):
             return {"text": join_open_tanween(row["text"]), "matn": join_open_tanween(row["matn"]),
                     "sanad": row["sanad"], "graders": json.loads(row["graders"] or "[]"),
-                    "translations": json.loads(row["translations"] or "{}")}
+                    "translations": json.loads(row["translations"] or "{}"),
+                    "notes": self._notes(rec_id)}
         return {"text": row["text"], "matn": row["matn"], "sanad": row["sanad"],
                 "graders": json.loads(row["graders"] or "[]"),
                 "translations": json.loads(row["translations"] or "{}")}
+
+    def _notes(self, rec_id):
+        """The translators' footnotes for a verse, by language (scripts/09_quranenc.py). QuranEnc
+        publishes them with the translation and its terms forbid deleting content, so they are
+        kept and shown on request."""
+        try:
+            return {lg: n for lg, n in self.db.execute(
+                "SELECT lang, notes FROM tnotes WHERE id=?", (rec_id,))}
+        except sqlite3.OperationalError:      # an index built before 09_quranenc.py
+            return {}
 
     def search(self, query, k=12, dense_w=DENSE_W, lex_w=LEX_W):
         lang = detect(query)
@@ -553,11 +584,11 @@ class Isnad:
         # isdecimal, not isdigit: "²" is a digit to isdigit() and int("²") raises.
         nums = [int(t) for t in toks if t.isdecimal()]
         rest = [t for t in toks if not t.isdecimal()]
-        if not nums and not rest:
+        if not nums and not rest and not NAMED_VERSES.get(_name_key(query)):
             return None
         self._lookup_tables()
         # A verse known by a name drawn from its own words ("آية الدين": إذا تداينتم بدين).
-        named = NAMED_VERSES.get(" ".join(t for t in rest if t not in _NAMED_FILLER))
+        named = NAMED_VERSES.get(_name_key(query))
         if named and not nums:
             return self._verses(*named)
         if not nums or len(nums) > 3:

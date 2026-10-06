@@ -43,6 +43,9 @@ export const copy = {
     translation: "الترجمة المنشورة",
     translator: (name: string) => `ترجمة ${name}`,
     translatorUnknown: "المصدر ما ذكر اسم المترجم",
+    version: (v: string) => `الإصدار ${v}`,
+    fetched: "نُقلت في",
+    notes: "حواشي المترجم",
     // A verse links to quranpedia.net, the Qur'an reference the Reference Framework names; its
     // page shows the verse with its tafsir.
     verifyAyah: "الآية وتفسيرها في الموسوعة القرآنية",
@@ -166,4 +169,12 @@ export const translatorAr: Record<string, string> = {
   "King Fahd Complex": "مجمع الملك فهد",
   "Abul A Ala Maududi": "أبو الأعلى المودودي",
   "Abu Bakr Zakaria": "أبو بكر زكريا",
+  // QuranEnc.com credits (scripts/09_quranenc.py), in the Arabic its own pages use.
+  "Taqi-ud-Din al-Hilali and Muhammad Muhsin Khan": "تقي الدين الهلالي ومحمد محسن خان",
+  "Muhammad Ibrahim Junagarhi": "محمد إبراهيم جوناكرهي",
+  "Rowwad Translation Center": "مركز رواد الترجمة",
+  "Noor International Center": "مركز نور إنترناشونال",
+  "Abdulhamid Al-Baqawi": "عبد الحميد باقوي",
+  "Indonesian Ministry of Religious Affairs (the Complex edition)":
+    "وزارة الشؤون الدينية الإندونيسية، طبعة المجمع",
 };

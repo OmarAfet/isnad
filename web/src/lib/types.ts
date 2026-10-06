@@ -37,6 +37,13 @@ export interface Translation {
   text: string;
   translator: string | null;
   edition: string | null;
+  // Qur'an translations come from QuranEnc.com, whose terms ask for the publisher, the source and
+  // the version to be named (scripts/09_quranenc.py). Absent for hadith translations.
+  publisher?: string | null;
+  source_url?: string | null;
+  version?: string | null;
+  fetched?: string | null;
+  notes?: string | null;
 }
 
 export interface TextRecord {

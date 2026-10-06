@@ -230,30 +230,56 @@ class OnnxEncoder:
 
 
 class Bm25:
+    """Okapi BM25 over a fixed corpus, held as flat arrays.
+
+    WHY ARRAYS. The postings were a dict of Python lists of (doc, count) tuples: 72-238 MB of heap
+    per language (tracemalloc, 2026-10-06), so a reader who tried six languages in a row took the
+    service past the free host's 2 GB and it was killed (Vercel log: "exited with code 137
+    (SIGKILL)", HTTP 500 for "Kuran'da sabır ile ilgili ayet" after fr, en, ur, id). The same
+    postings sorted by term, in int32/float32 arrays with an offset per term, take a few MB; the
+    term dictionary is what remains. Scores are the same formula; checked equal against the old
+    class to float32 rounding on every language before the switch."""
+
     def __init__(self, docs, k1=1.5, b=0.75, tokenize=str.split):
+        from array import array
         self.k1, self.b = k1, b
         self.tokenize = tokenize
-        toks = [tokenize(d) for d in docs]
-        self.dl = np.array([len(t) for t in toks], dtype=np.float32)
-        self.avgdl = float(self.dl.mean()) or 1.0
-        self.post = defaultdict(list)
-        for i, t in enumerate(toks):
-            for w, c in Counter(t).items():
-                self.post[w].append((i, c))
+        vocab = {}
+        term, doc, tf = array("i"), array("i"), array("i")
+        dl = np.empty(len(docs), dtype=np.float32)
+        for i, d in enumerate(docs):
+            toks = tokenize(d)
+            dl[i] = len(toks)
+            for w, c in Counter(toks).items():
+                term.append(vocab.setdefault(w, len(vocab)))
+                doc.append(i)
+                tf.append(c)
+        term = np.frombuffer(term, dtype=np.intc)
+        order = np.argsort(term, kind="stable")
+        self.doc = np.frombuffer(doc, dtype=np.intc)[order].astype(np.int32)
+        self.tf = np.frombuffer(tf, dtype=np.intc)[order].astype(np.float32)
+        counts = np.bincount(term, minlength=len(vocab))
+        self.start = np.zeros(len(vocab) + 1, dtype=np.int64)
+        np.cumsum(counts, out=self.start[1:])
+        self.vocab = vocab
         self.N = len(docs)
-        self.idf = {w: math.log(1 + (self.N - len(p) + 0.5) / (len(p) + 0.5))
-                    for w, p in self.post.items()}
+        self.dl = dl
+        self.avgdl = float(dl.mean()) if len(dl) else 1.0
+        self.avgdl = self.avgdl or 1.0
+        df = counts.astype(np.float64)
+        self.idf = np.log(1 + (self.N - df + 0.5) / (df + 0.5))
+        self.norm = k1 * (1 - b + b * dl.astype(np.float64) / self.avgdl)
 
     def score(self, q):
         s = np.zeros(self.N, dtype=np.float32)
         for w in set(self.tokenize(q)):
-            p = self.post.get(w)
-            if not p:
+            t = self.vocab.get(w)
+            if t is None:
                 continue
-            idf = self.idf[w]
-            for i, c in p:
-                s[i] += idf * c * (self.k1 + 1) / (
-                    c + self.k1 * (1 - self.b + self.b * self.dl[i] / self.avgdl))
+            a, z = self.start[t], self.start[t + 1]
+            d, f = self.doc[a:z], self.tf[a:z]
+            # Each document holds a term once, so the indices in d are distinct and += is safe.
+            s[d] += (self.idf[t] * f * (self.k1 + 1) / (f + self.norm[d])).astype(np.float32)
         return s
 
 
@@ -339,8 +365,10 @@ class Isnad:
             for line in f:
                 docs.append(json.loads(line)["t"])
         tok = ar_tokens if (lg == "ar" and STEM_AR) else str.split
+        # Only the Arabic surface is read again after the index is built (variant detection and
+        # the quoted-saying check); the other languages' texts are dropped once indexed.
         self._lang[lg] = {"E": E, "rows": rows, "bm25": Bm25(docs, tokenize=tok),
-                          "bm25_docs": docs}
+                          "bm25_docs": docs if lg == "ar" else None}
         if lg == "ar":
             self._ar_pos = {int(r): p for p, r in enumerate(rows)}
         return self._lang[lg]

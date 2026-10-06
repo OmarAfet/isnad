@@ -4,6 +4,20 @@ Updated 2026-10-06 15:20 Riyadh, at the end of session 3. A new session starts h
 context (rules, rubric, Discord answers, sources): `../CONTEXT.md`. Every decision below has its
 reason and evidence in the commit that made it (`git log`).
 
+## 0. BLOCKER (found at the end of session 3)
+
+**The live demo cannot decide: TypeSafe credits are exhausted.** Since about 15:08 Riyadh every
+Jev call returns HTTP 402, "Your organization has no available TypeSafe API credits"
+(`req_01a11126bce471608ee0da0645d6bb95`, checked 15:25). Every description then shows "خدمة
+التحقق متوقفة الحين" with no text; only citations ("البقرة 255") still work, since they need no
+Jev call. Fix: Omar adds credits or auto-reload at https://console.typesafe.ai/settings/billing
+(a paid action: his decision). Then run `python eval/smoke.py --api https://isnad-api.vercel.app`
+to confirm 14/14. Estimate, not a measurement: session 3's test runs used about 50 million input
+tokens (~$2 at $0.042 per million), counted from the runs made times the measured mean per
+search, so testing very likely used a large share of the credits. Budget future test runs: one
+full battery run is about 1.9 M tokens. The keep-warm ping and the page warm-up call
+`/api/health` only and use no credits.
+
 ## 1. Deadline and submission
 
 - **Submission closes Tue 2026-10-06 23:59 Riyadh.** Not submitted yet; Omar does the deck, the
@@ -127,7 +141,9 @@ embedding jobs at once.
 
 ## 6. Open items
 
-1. **Deck, video, submission form** (Omar). For the video: open the site once first, so the
+0. **Add TypeSafe credits** (section 0), then re-run the smoke test on production.
+1. **Deck, video, submission form** (Omar; a parallel session built them in `../submission/`,
+   see its HANDOFF.md). For the video: open the site once first, so the
    server is warm. Good demo searches: "الجنة تحت أقدام الأمهات" (sound text, differing words
    marked), "حديث إن الفقيه أشد على الشيطان من ألف عابد" (fabricated warning), "قل هو الله
    واحد" (misquote), "the hadith about the five pillars of Islam" (English), "لماذا يعبد

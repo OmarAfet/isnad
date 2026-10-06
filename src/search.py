@@ -107,44 +107,11 @@ _COLLECTION_KEYS = {tuple(normalize(name).lower().split()): key for key, names i
     "nasai": ["النسائي", "نسائي", "nasai", "nasa i", "nisai", "nasaee"],
     "ibnmajah": ["ابن ماجه", "ابن ماجة", "ibn majah", "ibn maja", "ibnmajah", "ibn majjah"],
 }.items() for name in names}
-# Other names readers use for a surah. Only names no other surah or word shares.
-SURAH_ALIASES = {"براءة": 9, "بني إسرائيل": 17, "المؤمن": 40, "حم السجدة": 41, "القتال": 47,
-                 "الدهر": 76, "عم": 78, "الانشراح": 94, "تبت": 111, "اللهب": 111}
-# Verses known by a name drawn from their own words: 2:282 "إذا تداينتم بدين", 5:6 "إذا قمتم إلى
-# الصلاة فاغسلوا", 3:61 "ثم نبتهل", 24:35 "الله نور السماوات"; 2:285-286 are the last two of
-# al-Baqarah's 286. "آية الحجاب" is left to search: readers mean 33:53, 33:59 or 24:31.
-_KURSI = (2, 255, 255)
-_NAMED = {
-    # Ayat al-Kursi by the names readers use in the eight other languages. "the verse of the
-    # throne" was answered with 27:26 ("رب العرش العظيم") and "Аят аль-Курси" with "not found"
-    # (judge test, 2026-10-06); normalize() keeps only Arabic and plain Latin letters, so these
-    # names are keyed by _name_key, which keeps every script.
-    "آية الكرسي": _KURSI, "آیت الکرسی": _KURSI, "ayat al kursi": _KURSI, "ayatul kursi": _KURSI,
-    "ayat ul kursi": _KURSI, "ayat kursi": _KURSI, "ayatal kursi": _KURSI, "kursi verse": _KURSI,
-    "verse of the throne": _KURSI, "throne verse": _KURSI, "аят аль-курси": _KURSI,
-    "аятуль курси": _KURSI, "аят курси": _KURSI, "аят ал-курси": _KURSI, "ayetel kürsi": _KURSI,
-    "ayet el kürsi": _KURSI, "ayetül kürsi": _KURSI, "ayetel kursi": _KURSI,
-    "verset du trône": _KURSI, "verset du trone": _KURSI, "আয়াতুল কুরসি": _KURSI,
-    "আয়াতুল কুরসী": _KURSI, "ஆயத்துல் குர்ஸி": _KURSI,
-    "آية الدين": (2, 282, 282), "آية المداينة": (2, 282, 282),
-    "خواتيم البقرة": (2, 285, 286), "خواتيم سورة البقرة": (2, 285, 286),
-    "خواتيم سوره البقره": (2, 285, 286), "آخر آيتين من سورة البقرة": (2, 285, 286),
-    "آخر آيتين في سورة البقرة": (2, 285, 286), "آخر آيتين من البقرة": (2, 285, 286),
-    "الآيتان من آخر سورة البقرة": (2, 285, 286), "last two verses of al baqarah": (2, 285, 286),
-    "آية النور": (24, 35, 35), "آية الوضوء": (5, 6, 6), "آية المباهلة": (3, 61, 61),
-}
-_NAMED_FILLER = _ASK | {"the", "le", "la", "l"}
-_ARABIC = re.compile(r"[\u0600-\u06FF]")
-
-
-def _name_key(q):
-    """A verse's name as a lookup key: Arabic normalized as everywhere else, other scripts only
-    lowercased with punctuation removed, request words and articles dropped."""
-    text = normalize(q) if _ARABIC.search(q or "") else re.sub(r"[^\w]+", " ", (q or ""))
-    return " ".join(t for t in text.lower().split() if t not in _NAMED_FILLER)
-
-
-NAMED_VERSES = {_name_key(k): v for k, v in _NAMED.items()}
+# NO HAND-WRITTEN NAME TABLES. Surahs are found by the names in the corpus itself (and those names
+# without "ال"); there is no list of other surah names and no table of verse names ("آية الدين" ->
+# 2:282). That table was a patch over the model: added after "the verse of the throne" was
+# answered with 27:26. Removed 2026-10-06 at Omar's request ("remove them and re-measure
+# honestly"): a verse's name is now the model's to recognise, and eval/heldout2.py measures it.
 
 
 def _find_name(toks, table, filler):
@@ -584,13 +551,9 @@ class Isnad:
         # isdecimal, not isdigit: "²" is a digit to isdigit() and int("²") raises.
         nums = [int(t) for t in toks if t.isdecimal()]
         rest = [t for t in toks if not t.isdecimal()]
-        if not nums and not rest and not NAMED_VERSES.get(_name_key(query)):
+        if not nums:
             return None
         self._lookup_tables()
-        # A verse known by a name drawn from its own words ("آية الدين": إذا تداينتم بدين).
-        named = NAMED_VERSES.get(_name_key(query))
-        if named and not nums:
-            return self._verses(*named)
         if not nums or len(nums) > 3:
             return None
         explicit = re.search(r"(\d{1,3})\s*[:：/]\s*(\d{1,3})(?:\s*[-–—]\s*(\d{1,3}))?", q)
@@ -636,8 +599,6 @@ class Isnad:
                 m = _REF_NO.search(r.get("ref") or "")
                 if m:
                     self._by_ref[(r["collection_key"], int(m.group(1)))].append(i)
-        for alias, s in SURAH_ALIASES.items():
-            self._surah_no.setdefault(tuple(normalize(alias).split()), s)
 
     def _verses(self, s, a, b):
         ayahs = self._ayahs.get(s) or {}

@@ -409,14 +409,21 @@ class Isnad:
         order = np.argsort(-scores)
         out = []
         kept_tokens = []
+        kept_shown = []
         for o in order:
             if len(out) >= k:
                 break
             ri = int(items[o])
             rec = self.recs[ri]
-            disp = self.display(rec["id"])
-            toks = set((rec.get("surah_name") and "" or "").split())
             toks = set(_match_tokens(self, ri))
+            # The words the reader is shown. The matching surface keeps the compiler's notes, so
+            # al-Nasa'i 4063 ("من بدل دينه فاقتلوه" and al-Nasa'i's comment) never matched
+            # al-Bukhari 6922, which shows the same four words: the two were not merged, and the
+            # Nasa'i copy, a report from al-Hasan, was cited instead of al-Bukhari (judge test).
+            shown = None
+            if rec["kind"] == "hadith":
+                shown = tuple(normalize(split_commentary(
+                    self.display(rec["id"]).get("matn") or "")[0]).split())
             dup_of = None
             for pos, prev in enumerate(kept_tokens):
                 # Only hadith collapse into hadith. A narration that quotes an ayah shares its
@@ -429,7 +436,8 @@ class Isnad:
                 # Identical short texts are one report too: "الجار أحق بسقبه" (3 words) was listed
                 # twice, from al-Nasa'i and Ibn Majah, below the 6-word floor for near-copies.
                 if (d >= VARIANT_MIN_TOKENS and len(toks & prev) / d >= VARIANT_CONTAINMENT) or \
-                        (d >= 2 and toks == prev):
+                        (d >= 2 and toks == prev) or \
+                        (shown and len(shown) >= 2 and shown == kept_shown[pos]):
                     dup_of = pos
                     break
             if dup_of is not None:
@@ -438,6 +446,7 @@ class Isnad:
                 continue
             out.append(self._full(ri, float(scores[o]), via[ri], lang, kind))
             kept_tokens.append(toks)
+            kept_shown.append(shown)
         if kind is None and k >= 2 * MIN_PER_KIND:
             out = self._both_kinds(out, order, items, scores, via, lang, k)
         for pos, r in enumerate(out):

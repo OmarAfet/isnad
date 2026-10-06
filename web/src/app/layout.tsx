@@ -28,17 +28,53 @@ const amiriQuran = Amiri_Quran({
 });
 
 // A shared link previews as what it is (judge-style test: a shared ?q= link had no preview).
-const DESCRIPTION = "صف ما تتذكره من آية أو حديث، واحصل على النص بلفظه ومصدره ودرجته.";
+// The title carries the search words people type ("آية", "حديث", "تخريج") because the bare
+// brand name matched no query.
+const SITE_URL = "https://isnad-app.vercel.app";
+const TITLE = "إسناد: ابحث عن آية أو حديث بالمعنى";
+const DESCRIPTION =
+  "صف ما تتذكره من آية أو حديث بأي لغة، واحصل على النص بلفظه ومصدره ودرجته من القرآن الكريم والصحيحين والسنن الأربع.";
 export const metadata: Metadata = {
-  metadataBase: new URL("https://isnad-app.vercel.app"),
-  title: "إسناد",
+  metadataBase: new URL(SITE_URL),
+  title: { default: TITLE, template: "%s | إسناد" },
   description: DESCRIPTION,
+  applicationName: "إسناد",
+  keywords: [
+    "البحث عن حديث",
+    "البحث عن آية",
+    "تخريج الحديث",
+    "درجة الحديث",
+    "صحيح البخاري",
+    "صحيح مسلم",
+    "القرآن الكريم",
+    "hadith search",
+    "Quran verse finder",
+  ],
+  alternates: { canonical: "/" },
+  robots: { index: true, follow: true },
   openGraph: {
-    title: "إسناد",
+    title: TITLE,
     description: DESCRIPTION,
+    url: "/",
     siteName: "إسناد",
     locale: "ar_SA",
     type: "website",
+  },
+  twitter: { card: "summary", title: TITLE, description: DESCRIPTION },
+};
+
+// ?q= re-runs a search, so search engines can offer a site search box.
+const JSON_LD = {
+  "@context": "https://schema.org",
+  "@type": "WebSite",
+  name: "إسناد",
+  url: SITE_URL,
+  inLanguage: "ar",
+  description: DESCRIPTION,
+  potentialAction: {
+    "@type": "SearchAction",
+    target: `${SITE_URL}/?q={search_term_string}`,
+    "query-input": "required name=search_term_string",
   },
 };
 
@@ -54,6 +90,10 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       className={`${readex.variable} ${amiri.variable} ${amiriQuran.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(JSON_LD) }}
+        />
         <TooltipProvider delayDuration={200}>{children}</TooltipProvider>
         <Toaster position="bottom-center" dir="rtl" />
       </body>

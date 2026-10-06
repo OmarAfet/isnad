@@ -1,7 +1,13 @@
 import type { Metadata } from "next";
 import { SiteFooter, SiteHeader } from "@/components/isnad/site-shell";
 
-export const metadata: Metadata = { title: "كيف يشتغل إسناد" };
+export const metadata: Metadata = {
+  title: "كيف يشتغل إسناد",
+  description:
+    "كيف يبحث إسناد في 40,389 نصًا موثقًا من القرآن الكريم والصحيحين والسنن الأربع، وكيف يختار النص ودرجته.",
+  alternates: { canonical: "/method" },
+  openGraph: { title: "كيف يشتغل إسناد", url: "/method" },
+};
 
 // The specialist page. Technical detail lives here and nowhere else, and every number on it was
 // measured by a script in the repository that prints the command that produced it.

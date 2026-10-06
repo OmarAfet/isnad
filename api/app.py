@@ -347,7 +347,8 @@ async def _answer(q, progress=None):
     if rec and d["verdict"] in ("confident", "tentative") and lang == "ar" and not d.get("lookup"):
         copies = [rec] + [by_id.get(v["id"]) or ix.display(v["id"])
                           for v in rec.get("variants") or []]
-        missing = cascade.wording(q, [c for c in copies if c])
+        missing = cascade.wording(q, [c for c in copies if c],
+                                  quoted=(d.get("saying") or 0) >= cascade.SAYING_THRESHOLD)
 
     out = {
         "query": q,

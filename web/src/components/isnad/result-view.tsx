@@ -624,6 +624,21 @@ function TopicCard({ record: t, onOpen }: { record: TextRecord; onOpen?: (id: st
         <ChevronLeft className="ms-auto size-4 text-muted-foreground transition-transform group-hover:-translate-x-0.5" />
       </div>
       <p className={cn(isAyah ? "quran" : "scripture", "text-lg line-clamp-3")}>{t.matn}</p>
+      {t.translation && (isAyah || PREVIEW_HADITH.has(t.translation.lang)) && (
+        <p
+          dir={ltrLangs.has(t.translation.lang) ? "ltr" : "rtl"}
+          lang={t.translation.lang}
+          className="mt-2 text-sm leading-relaxed text-muted-foreground line-clamp-2"
+        >
+          {t.translation.text}
+        </p>
+      )}
     </button>
   );
 }
+
+// A reader who searched in English saw a list of Arabic texts only (judge test, 2026-10-06): each
+// card now previews the published translation in the reader's language. For hadith, only where
+// the translations open with the Prophet's words; the Indonesian, Urdu, Turkish and Bengali
+// editions often open with the chain of narrators, which says nothing in two lines.
+const PREVIEW_HADITH = new Set(["en", "fr", "ru", "ta"]);

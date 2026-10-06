@@ -13,6 +13,7 @@ import asyncio
 import hmac
 import json
 import os
+import re
 import sys
 import threading
 import time
@@ -134,13 +135,26 @@ def _limited(ip):
     return False
 
 
+# A "translation" that is mostly Arabic letters, in a language not written in Arabic script, is not
+# a translation: 502 Bengali hadith entries are (al-Bukhari 6114's is only the Arabic chapter
+# heading "لقول الله تعالى ..."), counted 2026-10-06. Shown, it was labelled "the published
+# Bengali translation". No translation is better than a wrong one; the entry still serves search.
+_ARABIC_LETTER = re.compile(r"[\u0600-\u06FF]")
+_LETTER = re.compile(r"\w")
+
+
+def _mostly_arabic(text):
+    n = len(_LETTER.findall(text))
+    return n > 0 and len(_ARABIC_LETTER.findall(text)) / n > 0.5
+
+
 def _translation(rec, lang):
     """The published translation in the reader's language, with its translator, or nothing.
     Isnad never produces a translation of its own."""
     if not lang or lang == "ar":
         return None
     text = (rec.get("translations") or {}).get(lang)
-    if not text:
+    if not text or (lang != "ur" and _mostly_arabic(text)):
         return None
     tr = STATE["translators"]
     if rec["kind"] == "ayah":

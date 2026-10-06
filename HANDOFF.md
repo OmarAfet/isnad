@@ -11,6 +11,8 @@ A new session starts here. Gathered challenge context (rules, rubric, Discord an
   deck **PDF/PPT/PPTX ≤ 10 MB**, demo video link **≤ 2 min**, **public** GitHub repo,
   **live demo URL**. Content-and-sources documentation has no field: it goes in the deck and repo.
 - **Live demo URL (published 2026-10-05 23:30 with Omar's approval): https://isnad-app.vercel.app**
+- **Public repo (published 2026-10-06 12:3x with Omar's approval): https://github.com/OmarAfet/isnad**
+  History scanned first: no secret values. Keep-warm workflow active (first run: HTTP 204).
 - Discord: check in for Day 3 (`حاضر` in #إسناد-450 from 09:00). Omar answered the mentors'
   end-of-day-2 questionnaire himself (2026-10-06); his plan there: video and remaining
   requirements.
@@ -37,11 +39,12 @@ A new session starts here. Gathered challenge context (rules, rubric, Discord an
 | Page load starts the API (`POST /api/warm`) | `web/src/app/api/warm` | **new, live** |
 | Word index in flat arrays (all 9 languages fit 2 GB) | `src/search.py` `Bm25` | **fixed, live** |
 | Behaviour tests (14 cases) | `eval/smoke.py` | **14/14 local and production** |
-| Judge battery (76 typed questions) | `eval/battery.py` | **76/76 production** |
+| Judge battery (78 typed questions) | `eval/battery.py` | **78/78 production** |
 | README: sources log, licences, results, limits, setup | `README.md`, `requirements*.txt` | **done, b07787e** |
 | Translations: Arabic-letter "translations" hidden (502 Bengali); list cards preview translations | `api/app.py`, web | **live, 1b047f8** |
 | Branded tab icon (svg, ico, apple); template files removed | `web/src/app/icon.svg` etc. | **live, 4137434** |
-| Keep-warm ping every 5 min (GitHub Actions) | `.github/workflows/keep-warm.yml` | **inactive until the repo is on GitHub** |
+| Keep-warm ping every 5 min (GitHub Actions) | `.github/workflows/keep-warm.yml` | **active** (registered after a second push touching the file) |
+| Qur'an translations shown: all 8 from QuranEnc.com, credited, versioned, footnotes | `scripts/09_quranenc.py`, web | **live, 017267e** |
 | Qur'an text vs quran.com, all 6,236 verses | `eval/check_quran_text.py` | **0 split words** |
 
 ## 3. Run, test, deploy
@@ -101,6 +104,11 @@ Machine has 9 GB RAM: never run two embedding jobs at once.
 16. **A broad request returns one text only at p >= 0.90** (BROAD_SINGLE), else the list:
     "حديث عن الكذب" got one hadith at 0.82; loosely described single verses score 0.91-1.00.
 17. **Translations whose letters are mostly Arabic are not shown** (502 Bengali entries).
+18. **Qur'an translations shown come from QuranEnc.com** (Omar, 2026-10-06: "show approved and
+    trusted ones"): en Hilali-Khan, ur Junagarhi, tr and ru Rowwad Center, fr Noor International,
+    ta Baqawi, bn Abu Bakr Zakaria, id the Complex edition. QuranEnc's terms: no alteration,
+    name publisher, source, version; so the credit line links QuranEnc.com with the version (or
+    the fetch date) and the footnotes open on request. Search surfaces unchanged.
 
 ## 5. Measured numbers (each reproducible from a script)
 
@@ -147,12 +155,8 @@ Machine has 9 GB RAM: never run two embedding jobs at once.
 
 ## 6. Open items, in priority order
 
-1. **Decision for Omar: Qur'an translations shown.** The framework (p. 3) approves King Fahd
-   Complex translations "or those on quranpedia.net". en (Hilali-Khan), id and bn are KFC; ur
-   (Maududi), tr (Golpinarli), ru (Abu Adel), fr (quranenc "Montada"), ta (Baqavi) are not
-   KFC, and quranpedia's list could not be read without a browser. Options: show only KFC ones
-   (others stay search-only), or keep all with the translator named.
-2. **Public GitHub repo** (publishing also turns on the keep-warm workflow) (`gh` is logged in as OmarAfet; no remote yet). Ask Omar before
+1. Done: Qur'an translations (decision 18). 2. Done: public GitHub repo.
+2a. **Deck**, **video**, **submission form**: Omar's next steps. (`gh` is logged in as OmarAfet; no remote yet). Ask Omar before
    publishing. Check first: no secrets in history (keys live in `../.env`), `deploy/` and
    `data/models/` are gitignored.
 3. **Deck** (PptxGenJS). Brand: Readex Pro, #12183F, #6150EA, #2EF2C2, #F2F4FF; template

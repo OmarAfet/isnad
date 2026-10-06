@@ -164,7 +164,7 @@ def main():
     from search import Isnad
     api = a[a.index("--api") + 1] if "--api" in a else "http://127.0.0.1:8000"
     gap = float(a[a.index("--gap") + 1]) if "--gap" in a else 2.1
-    print(f"RAN: python eval/heldout2.py --api {api} --gap {gap}")
+    print(f"RAN: python {os.path.relpath(sys.argv[0])} --api {api} --gap {gap}")
     ix = Isnad()
     groups = {}
     engines = {}

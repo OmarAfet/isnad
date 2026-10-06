@@ -1,0 +1,6 @@
+# Rebuilding the index from the sources (scripts/01-08): embeds 40,389 texts on 9 language
+# surfaces with the PyTorch model. Not needed to serve.
+-r requirements.txt
+sentence-transformers==6.1.0
+torch==2.14.1
+transformers==5.18.0

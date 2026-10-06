@@ -1,0 +1,10 @@
+# Serving the API (python -m uvicorn api.app:app). Versions as deployed (scripts/stage_api.py).
+fastapi==0.142.2
+uvicorn==0.54.0
+pydantic==2.13.5
+numpy==2.5.3
+onnxruntime==1.30.0
+tokenizers==0.23.2
+typesafe-sdk==0.7.2
+huggingface-hub==1.33.0   # downloads the pinned int8 ONNX export of the encoder
+certifi==2026.7.22        # eval scripts over HTTPS on macOS Python builds

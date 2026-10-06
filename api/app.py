@@ -357,7 +357,11 @@ async def _answer(q, progress=None):
     cache[q] = out
     if len(cache) > CACHE_SIZE:
         cache.popitem(last=False)
-    _save_cache()
+    # Only a full read is worth keeping across restarts (~3.5M tokens an answer). In the default
+    # mode nothing a reader types is written to disk: the answers live in memory only. On Vercel
+    # the write failed silently anyway (read-only file system); now it is not attempted.
+    if MODE == "knockout":
+        _save_cache()
     return out
 
 

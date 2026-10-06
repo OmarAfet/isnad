@@ -3,8 +3,10 @@
 Isnad SELECTS a text. It never writes one. Every result is a record that exists in the corpus,
 carrying its own reference and the ruling of a named scholar.
 
-HYBRID, measured rather than assumed (eval/fusion_sweep.py, full index):
-    dense only   hit@1 3/13      lexical only hit@1 4/13      hybrid 7/13
+HYBRID, measured rather than assumed (eval/hybrid_vs_single.py, full index, ONNX encoder as
+deployed, 2026-10-06; session 1 measured 3, 4 and 7 of 13 with PyTorch on MPS):
+    dense only   hit@1 4/13      lexical only hit@1 6/13      hybrid 8/13
+    hit@120 (what Jev is handed): dense 11/13, lexical 13/13, hybrid 13/13
 Each half covers the other's blind spot. Dense finds a paraphrase that shares no word with the
 text; lexical finds the half-remembered quotation that dense flattens into a cloud of similar
 sentences. Fusion is z-score weighted 0.70/0.30 - chosen over min-max and RRF, which both scored

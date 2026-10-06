@@ -1,7 +1,8 @@
 # Isnad — session handoff
 
-Updated 2026-10-05 23:35 Riyadh, during session 2 (session 1 ended 22:10). A new session starts
-here. Gathered challenge context (rules, rubric, Discord answers, sources): `../CONTEXT.md`.
+Updated 2026-10-06 03:45 Riyadh, session 3 (a second judge-style pass; commits f1d630d..b07787e).
+A new session starts here. Gathered challenge context (rules, rubric, Discord answers, sources):
+`../CONTEXT.md`.
 
 ## 1. Deadline and submission
 
@@ -10,8 +11,9 @@ here. Gathered challenge context (rules, rubric, Discord answers, sources): `../
   deck **PDF/PPT/PPTX ≤ 10 MB**, demo video link **≤ 2 min**, **public** GitHub repo,
   **live demo URL**. Content-and-sources documentation has no field: it goes in the deck and repo.
 - **Live demo URL (published 2026-10-05 23:30 with Omar's approval): https://isnad-app.vercel.app**
-- Discord: check in for Day 3 (`حاضر` in #إسناد-450 from 09:00); the mentor's progress
-  questionnaire (2026-10-04 16:31) is unanswered.
+- Discord: check in for Day 3 (`حاضر` in #إسناد-450 from 09:00). Omar answered the mentors'
+  end-of-day-2 questionnaire himself (2026-10-06); his plan there: video and remaining
+  requirements.
 
 ## 2. State: what works (all committed)
 
@@ -27,8 +29,16 @@ here. Gathered challenge context (rules, rubric, Discord answers, sources): `../
 | API (FastAPI, SSE, proxy secret) | `api/app.py` → https://isnad-api.vercel.app | **live** |
 | Web (Next.js 16, shadcn RTL, white Saudi dialect) | `web/` → https://isnad-app.vercel.app | **live** |
 | Search by subject ("ايه عن النوم"): kind words, light10 stemming, per-text relevance | `src/search.py`, `src/cascade.py` | **fixed 2026-10-06, live** |
+| Questions about Islam (belief, meaning, history, objections): texts + approved reference | `src/cascade.py`, web | **new 2026-10-06, live** |
+| Judging people or groups: "outside Isnad's work", no texts | `src/cascade.py`, web | **new, live** |
+| Citations looked up ("البقرة 255", "2:255", "البخاري 6018", "مسلم 2564", "آية الدين") | `src/search.py` `lookup` | **new, live** |
+| Misquoted words marked ("قل هو الله واحد" -> "واحد" underlined) | `src/cascade.py` `wording`, web | **new, live** |
+| Every verse links to quranpedia.net (verse + tafsir) | `scripts/_dorar.py` `ayah_url` | **new, live** |
+| Page load starts the API (`POST /api/warm`) | `web/src/app/api/warm` | **new, live** |
+| Word index in flat arrays (all 9 languages fit 2 GB) | `src/search.py` `Bm25` | **fixed, live** |
 | Behaviour tests (14 cases) | `eval/smoke.py` | **14/14 local and production** |
-| Judge battery (57 typed questions) | `eval/battery.py` | **57/57 production** |
+| Judge battery (76 typed questions) | `eval/battery.py` | **76/76 production** |
+| README: sources log, licences, results, limits, setup | `README.md`, `requirements*.txt` | **done, b07787e** |
 | Qur'an text vs quran.com, all 6,236 verses | `eval/check_quran_text.py` | **0 split words** |
 
 ## 3. Run, test, deploy
@@ -73,17 +83,31 @@ Machine has 9 GB RAM: never run two embedding jobs at once.
    link and "ask scholars"; a personal case (framework level د) leads with the referral.
    Rejected: published fatwas by named bodies (new dataset, licences, too risky).
 10. **API locked to the web tier** by `ISNAD_PROXY_SECRET`: every search spends the paid Jev key.
+11. **Five request classes** (session 3): the Reference Framework's own test questions
+    ("لماذا يعبد المسلمون الكعبة؟") got "إسناد ما يفتي" and a fiqh search. Added "question"
+    (texts that speak to it + the approved reference for its kind: بينات for objections, dorar
+    creed/fiqh/history encyclopedias, the terms dictionary) and "judge_people" (out of scope).
+    The question path needs a question form and a yes on "is this about Islam" (a separate
+    Noul: an "unrelated" option inside the Choice took "verse about bees" to unrelated).
+12. **A quoted saying never gets a subject list** (Jev Noul, 54/54): "الدين المعاملة" listed
+    debt hadith (الدَّين). Two-word quotations must be in the text whole.
+13. **Citations are looked up, not searched**; no match percentage, no Jev call.
+14. **Identical shown text = one report**, so the Sahihayn copy leads (al-Bukhari 6922, not
+    al-Nasa'i 4063, for "من بدل دينه فاقتلوه").
+15. **No disk writes in the default mode**: answers live in memory; only knockout saves them.
 
 ## 5. Measured numbers (each reproducible from a script)
 
-- 40,389 texts; 9 languages; 99.8% of hadith carry a named-scholar ruling; 8 graders.
+- 40,389 texts; 9 languages; 34,109 of 34,153 hadith graded (Sahihayn by inclusion, Sunan by
+  8 named graders).
 - dorar.net severity agreement 29/29 (`scripts/05`).
-- Hybrid search hit@1 7/13 vs dense 3/13, lexical 4/13 (session 1, MPS; `eval/fusion_sweep.py`
-  no longer imports: it asks `search.py` for the removed `_minmax`).
+- Hybrid search hit@1 8/13 vs dense 4/13, lexical 6/13; hit@120 13, 11, 13
+  (`eval/hybrid_vs_single.py`, ONNX as deployed; `eval/fusion_sweep.py` no longer imports).
 - Encoders (`eval/compare_encoders.py`, 25 queries, 7 languages): cosine 0.98–0.99; shortlist
   overlap median 85%; labelled hit@1 ONNX 7/13 vs PyTorch-CPU 6/13; hit@120 13/13 vs 12/13.
-- Memory (`eval/measure_memory.py`, all 9 languages): PyTorch 2.0 GB, ONNX 1.6 GB; Arabic ready
-  10 s → 1.8 s locally; on Vercel `ready_seconds` 3.6–4.1.
+- Memory (`ISNAD_ENCODER=onnx python eval/measure_memory.py`, all 9 languages): peak 1.1 GB
+  after the flat-array index (was 1.6 GB; production was SIGKILLed at 2 GB after 6 languages).
+  BM25 heap 1,313 MB -> 200 MB; scores equal to 3.8e-06, same top 50. `ready_seconds` 3.3-3.6.
 - Production (`eval/smoke.py`, from Riyadh to Vercel iad1): 14/14, median 1.2 s; 7-9 s on a
   cold instance (right after a deploy, or after idle minutes).
 - Search by subject (`eval/topic_recall.py`, 10 topic queries, 45 known answers): answers
@@ -91,6 +115,9 @@ Machine has 9 GB RAM: never run two embedding jobs at once.
 - Relevance judging (`eval/relevance_probe.py`): text inside each question, "same sense"
   wording, bar 0.75; right texts 0.80+. Request classifier (`eval/ask_probe.py`): 0/36 wrong.
 - Trace one query without Jev: `python eval/explain.py "<query>" --expect quran:2:255`.
+- Session 3 probes: `eval/ask_probe2.py` (5 classes + Islamic gate, 58 descriptions x 2: 108/116
+  in class, the rest safe), `eval/saying_probe.py` (54/54), `eval/refer_probe.py` (16/18, the
+  other 2 defensible). Production after deploy: battery 76/76 (median 1.0 s), smoke 14/14.
 - Judge-style test (2026-10-06, agent on the live site + `eval/battery.py`): fixed split Qur'an
   words (2,054 places, source fault), Muslim cited by Abd al-Baqi numbers (7,215 refs,
   `scripts/08_cite_muslim.py`), quoted-saying guard, both kinds for ruling lists, cards open
@@ -101,10 +128,11 @@ Machine has 9 GB RAM: never run two embedding jobs at once.
 
 ## 6. Open items, in priority order
 
-1. **README** (required, terms clause 9): setup, sources and licences log - hadith-api and
-   quran-api = The Unlicense, multilingual-e5-base and its ONNX export = MIT, Readex Pro /
-   Amiri / Amiri Quran = SIL OFL; translations carry their translators' rights and are shown
-   attributed; hosting Vercel Hobby; Jev (TypeSafe). AI disclosure, measured results, limits.
+1. **Decision for Omar: Qur'an translations shown.** The framework (p. 3) approves King Fahd
+   Complex translations "or those on quranpedia.net". en (Hilali-Khan), id and bn are KFC; ur
+   (Maududi), tr (Golpinarli), ru (Abu Adel), fr (quranenc "Montada"), ta (Baqavi) are not
+   KFC, and quranpedia's list could not be read without a browser. Options: show only KFC ones
+   (others stay search-only), or keep all with the translator named.
 2. **Public GitHub repo** (`gh` is logged in as OmarAfet; no remote yet). Ask Omar before
    publishing. Check first: no secrets in history (keys live in `../.env`), `deploy/` and
    `data/models/` are gitignored.
@@ -115,7 +143,8 @@ Machine has 9 GB RAM: never run two embedding jobs at once.
 5. **Submit** the form; keep the confirmation.
 6. Verify `https://dorar.net/feqhia/search?q=…` on the live site (Cloudflare blocks curl; the
    pattern comes from the page's own search form in an Internet Archive copy, 2025).
-7. Optional: Discord check-in; mentor questionnaire; "cached answer" line in the UI.
+7. Optional: host the built index (1.2 GB) as a release asset so the repo runs without a
+   rebuild (needs the public repo first); Discord check-in.
 
 ## 7. Known limits
 
@@ -126,13 +155,18 @@ Machine has 9 GB RAM: never run two embedding jobs at once.
 - Some matns still hold the chain (e.g. Tirmidhi 887); Muslim 6640 shows apart from 6638.
 - Knockout mode still answers ruling questions with a referral only.
 - Grader names for four Sunan translations are "Unknown" in the source metadata.
-- Cold start: the first search after a few idle minutes takes ≈ 8 s (the page says so after 3 s).
+- Cold start: the first search after a few idle minutes takes ≈ 8 s (the page says so after 3 s);
+  the home page now starts the API on load, so a reader who types first does not wait.
+- Questions about Islam: search often misses the texts that answer them (Kaaba: 2:144, 106:3,
+  al-Bukhari 1597 are not in the 120), so the answer is the referral alone.
+- Latin-script Turkish can be detected as English (translation then shown in English).
+- "آخر آية نزلت" gets "not found" (the reports are hadith; the request names a verse).
 - Modern words miss classical texts: "ما حكم الموسيقى" finds no text (al-Bukhari 5590 says
   المعازف; "حكم المعازف" finds it). Hadith Jibril shows the Tirmidhi copy (the Sahihayn copies
   are worded too differently to merge). Source punctuation (stray quote marks) is shown as is.
 
 ## 8. Processes at this point
 
-Session-1 servers still run: API on :8000 (old code, PyTorch) and `next dev` on :3000. The
-isolated headless browser session `isnad-shots` used for screenshots is closed. Copy review of
-the ruling state is done (two reviewers, two lines fixed, commit 24428d3).
+Local API on :8000 runs the current code with the ONNX encoder (session 3); `next dev` on :3000.
+The isolated headless browser session `isnad-judge` (agent-browser `--auto-connect false`) was
+used for screenshots; `/tmp/isnad-judge/` holds the probe tool and outputs.

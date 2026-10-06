@@ -26,7 +26,7 @@ its source, and the grading of named scholars, or says plainly that it found no 
 | A wording that is not in the books: "حب الوطن من الإيمان" | "No matching text in the approved sources", and a dorar.net search link |
 | A quotation with wrong words: "قل هو الله واحد" | The right text (112:1), with the reader's differing word marked |
 | A subject: "ايه عن النوم", "حديث عن الكذب" | A list of the texts on it, the Qur'an first, sound before weak |
-| A citation: "البقرة 255", "2:255", "البخاري 6018", "مسلم 2564", "آية الدين" | The text itself, looked up, not searched |
+| A citation: "البقرة 255", "2:255", "البخاري 6018", "مسلم 2564" | The text itself, looked up, not searched |
 | A ruling question: "ما حكم الربا" | The texts on the matter, then "Isnad does not issue fatwas" and a referral |
 | A question about Islam: "لماذا يعبد المسلمون الكعبة؟" | The texts that speak to it (if any), then the approved reference for that kind of question |
 | A judgement on people or groups | "Outside Isnad's work", with no texts |
@@ -47,6 +47,10 @@ description ──► stage 1: hybrid search over 40,389 texts ──► 120 can
 
 A citation ("البقرة 255") and a surah name ("سورة الإخلاص") skip both stages: they are read from
 the reference itself. Every number on the screen comes from the sources; Jev only chooses.
+
+The instructions to Jev contain no example requests and there is no hand-written table of
+answers (verse names, sayings). Both existed until 2026-10-06; several examples were the test
+questions themselves. They were removed and everything was measured again (below).
 
 ## Sources
 
@@ -86,34 +90,47 @@ Anthropic), directed by the team lead. No earlier version exists: the first comm
 
 Each number is printed by a script in this repository, which also prints the command it ran.
 
-**Against the alternatives a reader has today**, on a held-out set: 38 questions written after
-the code was frozen and run once on production (`eval/heldout.py`, 2026-10-06), in Arabic, Saudi
-dialect, English, Indonesian, Urdu, French and Russian:
+**On questions Isnad was never tuned on.** Two held-out sets, written after the code was frozen and
+run on production; the second covers every kind of request. Measured on 2026-10-06 after the
+example sentences and name tables were removed from the instructions (see above):
 
-| | Keyword search (BM25, same books) | Meaning search (e5) | Both (Isnad's stage 1) | Isnad |
+| Held-out set | Isnad | Keyword search (BM25, same books) | Meaning search (e5) | Both (Isnad's stage 1) |
 |---|---|---|---|---|
-| Described texts: right text first, of 30 | 22 | 16 | 23 | **28** |
-| Sayings that are not sound hadith in these books: honest answer, of 8 | 0 | 1 | 0 | **8** |
+| Set 1 (`eval/heldout.py`): described texts, right text first, of 30 | **28** | 22 | 16 | 23 |
+| Set 1: sayings that are not sound hadith in these books, answered honestly, of 8 | **8** | 0 | 1 | 0 |
+| Set 2 (`eval/heldout2.py`): described texts, of 18 | **16** | 13 | 11 | 16 |
+| Set 2: sayings not in these books, of 8 | **8** | 1 | 2 | 2 |
+| Set 2: questions about Islam, of 10 | 7 | - | - | - |
+| Set 2: judging people or groups declined, of 3 | 2 | - | - | - |
+| Set 2: ruling questions, of 4 | 4 | - | - | - |
+| Set 2: verses known by a name, of 4 | 3 | - | - | - |
+| Set 2: citations, of 3 | 3 | - | - | - |
+| Set 2: misquoted wording marked, of 3 | 2 | - | - | - |
+| Set 2: subjects listed, of 4 | 4 | - | - | - |
+| **All held-out questions** | **85 of 95** | | | |
 
-A search engine always returns its top hit, so for a saying that is not in the books it shows a
-text that does not contain it; Isnad said "not found" for 6 and gave 2 as "closest, verify before
-citing". Isnad's 2 misses each gave a sound hadith on the same subject in other words (Muslim 782
-for 783; al-Tirmidhi 2485 for al-Bukhari 12). A second run after later fixes (commit 5e2f66a)
-gave the same numbers. On the battery's own questions, which also guided
-the fixes (in-sample): 29, 17, 20 and 22 of 29; 7, 0, 1 and 0 of 7 (`eval/baseline.py`).
+Removing the examples and tables changed neither held-out result (set 2: 49 of 57 before and
+after). A search engine always returns its top hit, so for a saying that is not in the books it
+shows a text that does not contain it. Isnad's misses, as they came: two described texts answered
+with a sound hadith on the same subject in other words (Muslim 782 for 783; al-Tirmidhi 2485 for
+al-Bukhari 12); al-Bukhari 6951 found but rated "unsure" for an Urdu description; Muslim 2651 for
+"deeds are judged by their endings" (al-Bukhari 6607); "Does Islam allow forcing someone to
+convert?" and "What does Islam say about honoring parents?" treated as ruling questions; "هل يدخل
+غير المسلمين الجنة؟" answered with a list; "هل الأشاعرة من أهل السنة؟" not declined; "آيات المواريث"
+not found; a misquote that contains "عن" not marked.
 
 | What | Result | Script |
 |---|---|---|
-| Judge battery: 76 typed questions, each with what an honest answer must contain | 76/76 on production, median 1.0 s | `eval/battery.py` |
+| Judge battery: 78 typed questions, each with what an honest answer must contain (in-sample: it guided the fixes) | 71/78 on production, median 1.0 s; the 7 failures are five verse names ("آية الدين", "the verse of the throne" answered with 27:26) and "الدين المعاملة" twice, which the removed examples and tables used to cover | `eval/battery.py` |
 | Behaviour tests | 14/14 on production | `eval/smoke.py` |
 | Hybrid search vs each half alone, 13 labelled descriptions | first place: hybrid 8, meaning only 4, wording only 6; in the 120 Jev reads: 13, 11, 13 | `eval/hybrid_vs_single.py` |
 | Qur'an text shown vs quran.com, all 6,236 verses | 0 split words; 3 differences, all spelling conventions of the King Fahd Mushaf | `eval/check_quran_text.py` |
 | Gradings vs dorar.net, seeded sample of 62 | 29 found there by book and number; 29/29 agree | `scripts/05_dorar_crosscheck.py` |
 | Hadith with a grading: the two Sahihs by inclusion, the Sunan by named scholars | 34,109 of 34,153 (99.9%) | `scripts/03_report.py` |
-| What is asked: 5 classes, 58 descriptions x 2 runs | 108 of 116 in the labelled class; the other 8 take a safe path (for example a ruling read as general, not personal) | `eval/ask_probe2.py` |
-| Quoted saying vs subject, 27 descriptions x 2 runs | 54/54 | `eval/saying_probe.py` |
+| What is asked: 5 classes, 58 descriptions x 2 runs, instructions without examples | 110 of 116 in the labelled class | `eval/ask_probe2.py` |
+| Quoted saying vs subject, 27 descriptions x 2 runs, instructions without examples | 50/54; wrong: "الدين المعاملة" in both phrasings | `eval/saying_probe.py` |
 | Citations looked up | about 20 ms, no model call | `eval/battery.py` (group "cite") |
-| Cost of the decision model per search, 76 questions | 23,232 input tokens mean (median 24,344): $0.00098 a search, about $1 per 1,000 at Jev's $0.042 per million input tokens (output is free) | `eval/battery.py` |
+| Cost of the decision model per search, 78 questions | 24,233 input tokens mean (median 25,351): $0.00102 a search, about $1 per 1,000 at Jev's $0.042 per million input tokens (output is free) | `eval/battery.py` |
 | Accessibility, automated (axe-core 4.10.2, WCAG 2.0-2.2 A/AA rules), 4 pages | 0 violations (21-27 rules passed per page) | `eval/a11y.sh` |
 | Memory, all 9 languages loaded, 3 searches | peak 1.1 GB (was 1.6 GB, and production was killed at the 2 GB limit) | `eval/measure_memory.py` with `ISNAD_ENCODER=onnx` |
 
@@ -128,6 +145,15 @@ the fixes (in-sample): 29, 17, 20 and 22 of 29; 7, 0, 1 and 0 of 7 (`eval/baseli
 - Modern words can miss classical wording: "ما حكم الموسيقى" does not reach al-Bukhari 5590
   ("المعازف"); "حكم المعازف" does.
 - Jev's subject lists vary slightly between runs.
+- Verses are not found by many of their names: "آية الدين", "آيات المواريث", "خواتيم سورة البقرة";
+  "the verse of the throne" gets 27:26 ("رب العرش العظيم"). "آية الكرسي" and "آية النور" work
+  through search. There is no hand-written name table.
+- The saying "الدين المعاملة" is read as being about debts (الدَّين) and gets a list of hadith on
+  debts instead of "not found".
+- Some questions about Islam are treated as ruling questions (texts plus a fiqh referral), and
+  some judgements on groups are not declined ("هل الأشاعرة من أهل السنة؟").
+- A misquoted text whose words include "عن" is taken as a description, so its wrong words are
+  not marked.
 - Some hadith texts still begin with part of the chain; source punctuation is shown as published.
 - Some hadith translations name no translator ("Unknown" in the source), and some include the
   chain of narrators.

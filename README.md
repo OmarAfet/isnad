@@ -85,6 +85,18 @@ Anthropic), directed by the team lead. No earlier version exists: the first comm
 
 Each number is printed by a script in this repository, which also prints the command it ran.
 
+**Against the alternatives a reader has today** (`eval/baseline.py`, production, 2026-10-06), on
+the battery's own questions:
+
+| | Keyword search (BM25, same books) | Meaning search (e5) | Both (Isnad's stage 1) | Isnad |
+|---|---|---|---|---|
+| Described texts: right text first, of 29 | 17 | 20 | 22 | **29** |
+| Sayings that are not sound hadith: honest answer, of 7 | 0 | 1 | 0 | **7** |
+
+A search engine always returns its top hit, so for a saying that is not in the books it shows a
+text that does not contain it. Caveat: these questions also guided Isnad's fixes, so Isnad's
+column is in-sample; the search columns are not tuned to them.
+
 | What | Result | Script |
 |---|---|---|
 | Judge battery: 76 typed questions, each with what an honest answer must contain | 76/76 on production, median 1.0 s | `eval/battery.py` |

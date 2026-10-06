@@ -90,38 +90,41 @@ Anthropic), directed by the team lead. No earlier version exists: the first comm
 
 Each number is printed by a script in this repository, which also prints the command it ran.
 
-**On questions Isnad was never tuned on.** Two held-out sets, written after the code was frozen and
-run on production; the second covers every kind of request. Measured on 2026-10-06 after the
-example sentences and name tables were removed from the instructions (see above):
+**On questions Isnad was never tuned on** (production, 2026-10-06). Each set was written and frozen
+in git before the changes it measures, and run as is:
 
-| Held-out set | Isnad | Keyword search (BM25, same books) | Meaning search (e5) | Both (Isnad's stage 1) |
+| Set | Result |
+|---|---|
+| Set 1 (`eval/heldout.py`, 38 questions, written after the code froze in the morning) | **36 of 38**: 28 of 30 described texts, 8 of 8 sayings |
+| Set 3 (`eval/heldout3.py`, 59 questions of every kind, frozen before the last general fixes) | **49 of 59** after the fixes (46 before them) |
+
+Set 2 (`eval/heldout2.py`, 57 questions) measured 49 of 57 both before and after the examples
+and tables were removed; its misses then guided the last fixes, so it is now a development set
+(53 of 57).
+
+Set 3 by kind of request, with the same questions given to plain search:
+
+| Set 3 | Isnad | Keyword search (BM25, same books) | Meaning search (e5) | Both (Isnad's stage 1) |
 |---|---|---|---|---|
-| Set 1 (`eval/heldout.py`): described texts, right text first, of 30 | **28** | 22 | 16 | 23 |
-| Set 1: sayings that are not sound hadith in these books, answered honestly, of 8 | **8** | 0 | 1 | 0 |
-| Set 2 (`eval/heldout2.py`): described texts, of 18 | **16** | 13 | 11 | 16 |
-| Set 2: sayings not in these books, of 8 | **8** | 1 | 2 | 2 |
-| Set 2: questions about Islam, of 10 | 7 | - | - | - |
-| Set 2: judging people or groups declined, of 3 | 2 | - | - | - |
-| Set 2: ruling questions, of 4 | 4 | - | - | - |
-| Set 2: verses known by a name, of 4 | 3 | - | - | - |
-| Set 2: citations, of 3 | 3 | - | - | - |
-| Set 2: misquoted wording marked, of 3 | 2 | - | - | - |
-| Set 2: subjects listed, of 4 | 4 | - | - | - |
-| **All held-out questions** | **85 of 95** | | | |
+| Described texts, right text first, of 13 | **12** | 5 | 4 | 7 |
+| Sayings that are not sound hadith in these books, answered honestly, of 8 | **8** | 0 | 0 | 1 |
+| Questions about Islam, of 8 | 8 | - | - | - |
+| Judging people or groups declined, of 5 | 5 | - | - | - |
+| Ruling questions, of 4 | 4 | - | - | - |
+| Citations, of 3 | 3 | - | - | - |
+| Subjects listed, of 4 | 4 | - | - | - |
+| Misquoted words marked, of 5 | 4 (the miss is our labelling error: 20:114 says "رَبِّ", so marking "ربي" was right) | - | - | - |
+| Verses asked by a traditional name, of 9 | **1** | - | - | - |
 
-Removing the examples and tables changed neither held-out result (set 2: 49 of 57 before and
-after). A search engine always returns its top hit, so for a saying that is not in the books it
-shows a text that does not contain it. Isnad's misses, as they came: two described texts answered
-with a sound hadith on the same subject in other words (Muslim 782 for 783; al-Tirmidhi 2485 for
-al-Bukhari 12); al-Bukhari 6951 found but rated "unsure" for an Urdu description; Muslim 2651 for
-"deeds are judged by their endings" (al-Bukhari 6607); "Does Islam allow forcing someone to
-convert?" and "What does Islam say about honoring parents?" treated as ruling questions; "هل يدخل
-غير المسلمين الجنة؟" answered with a list; "هل الأشاعرة من أهل السنة؟" not declined; "آيات المواريث"
-not found; a misquote that contains "عن" not marked.
+Set 1 with the same baselines: described texts 28, 22, 16, 23 of 30; sayings 8, 0, 1, 0 of 8.
+
+A search engine always returns its top hit, so for a saying that is not in the books it shows a
+text that does not contain it. Disclosure: while testing a dropped idea, one set-3 question
+("آية الحجاب") was traced by mistake; no code from that test was kept.
 
 | What | Result | Script |
 |---|---|---|
-| Judge battery: 78 typed questions, each with what an honest answer must contain (in-sample: it guided the fixes) | 71/78 on production, median 1.0 s; the 7 failures are five verse names ("آية الدين", "the verse of the throne" answered with 27:26) and "الدين المعاملة" twice, which the removed examples and tables used to cover | `eval/battery.py` |
+| Judge battery: 78 typed questions, each with what an honest answer must contain (in-sample: it guided the fixes) | 72/78 on production, median 1.0 s; the 6 failures are four verse names ("آية الدين", "the verse of the throne" answered with 27:26) and "الدين المعاملة" twice | `eval/battery.py` |
 | Behaviour tests | 14/14 on production | `eval/smoke.py` |
 | Hybrid search vs each half alone, 13 labelled descriptions | first place: hybrid 8, meaning only 4, wording only 6; in the 120 Jev reads: 13, 11, 13 | `eval/hybrid_vs_single.py` |
 | Qur'an text shown vs quran.com, all 6,236 verses | 0 split words; 3 differences, all spelling conventions of the King Fahd Mushaf | `eval/check_quran_text.py` |
@@ -145,15 +148,16 @@ not found; a misquote that contains "عن" not marked.
 - Modern words can miss classical wording: "ما حكم الموسيقى" does not reach al-Bukhari 5590
   ("المعازف"); "حكم المعازف" does.
 - Jev's subject lists vary slightly between runs.
-- Verses are not found by many of their names: "آية الدين", "آيات المواريث", "خواتيم سورة البقرة";
-  "the verse of the throne" gets 27:26 ("رب العرش العظيم"). "آية الكرسي" and "آية النور" work
-  through search. There is no hand-written name table.
+- Verses asked by a traditional name are mostly not found (1 of 9 in held-out set 3): a name
+  such as "آية الدين" or "آية الوضوء" shares no words with its verse, so search never hands the
+  verse to Jev, and "the verse of the throne" gets 27:26 ("رب العرش العظيم"). "آية الكرسي" works
+  through search. There is no hand-written name table; three general attempts (searching the
+  English translations, Arabic root matching, verses quoted by hadith) were measured and did
+  not help.
 - The saying "الدين المعاملة" is read as being about debts (الدَّين) and gets a list of hadith on
   debts instead of "not found".
-- Some questions about Islam are treated as ruling questions (texts plus a fiqh referral), and
-  some judgements on groups are not declined ("هل الأشاعرة من أهل السنة؟").
-- A misquoted text whose words include "عن" is taken as a description, so its wrong words are
-  not marked.
+- "Does Islam allow X?" is treated as a ruling question (texts plus a fiqh referral), even when
+  it is an objection.
 - Some hadith texts still begin with part of the chain; source punctuation is shown as published.
 - Some hadith translations name no translator ("Unknown" in the source), and some include the
   chain of narrators.

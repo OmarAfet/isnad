@@ -39,8 +39,8 @@ A new session starts here. Gathered challenge context (rules, rubric, Discord an
 | Page load starts the API (`POST /api/warm`) | `web/src/app/api/warm` | **new, live** |
 | Word index in flat arrays (all 9 languages fit 2 GB) | `src/search.py` `Bm25` | **fixed, live** |
 | Behaviour tests (14 cases) | `eval/smoke.py` | **14/14 local and production** |
-| Judge battery (78 typed questions, in-sample) | `eval/battery.py` | **71/78 production** after the cleanup (decision 19) |
-| Held-out sets: 1 (38) and 2 (57, every kind of request) | `eval/heldout.py`, `eval/heldout2.py` | **85/95 production** |
+| Judge battery (78 typed questions, in-sample) | `eval/battery.py` | **72/78 production** after the general fixes (decision 20) |
+| Held-out sets: 1 (38), 3 (59, frozen before the last fixes); 2 is now development | `eval/heldout*.py` | **set 1 36/38, set 3 49/59 (46 before the fixes)** |
 | README: sources log, licences, results, limits, setup | `README.md`, `requirements*.txt` | **done, b07787e** |
 | Translations: Arabic-letter "translations" hidden (502 Bengali); list cards preview translations | `api/app.py`, web | **live, 1b047f8** |
 | Branded tab icon (svg, ico, apple); template files removed | `web/src/app/icon.svg` etc. | **live, 4137434** |
@@ -110,6 +110,11 @@ Machine has 9 GB RAM: never run two embedding jobs at once.
     "remove them and re-measure honestly"). Effect: held-out set 2 (57, frozen at b854dcb)
     49/57 before and after; held-out set 1 unchanged (28/30, 8/8); battery 78/78 -> 71/78 (five
     verse names and "الدين المعاملة" x2 now fail). Do not re-add examples or tables to pass tests.
+20. **General fixes only, checked on a frozen new set** (Omar: "try the general fixes and check on
+    a new set"): question words name a subject (fixes "أهل السنة" read as a hadith cue); route by
+    the whole non-text share; "what Islam teaches about a subject" is a question; misquote marks
+    follow Jev's saying score. Dropped after measuring: English-translation search, ISRI roots,
+    hadith-quoted verses, three prompt rewordings. Set 3: 46 -> 49 of 59. Verse names stay 1/9.
 18. **Qur'an translations shown come from QuranEnc.com** (Omar, 2026-10-06: "show approved and
     trusted ones"): en Hilali-Khan, ur Junagarhi, tr and ru Rowwad Center, fr Noor International,
     ta Baqawi, bn Abu Bakr Zakaria, id the Complex edition. QuranEnc's terms: no alteration,

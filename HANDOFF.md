@@ -115,6 +115,10 @@ Machine has 9 GB RAM: never run two embedding jobs at once.
 - Relevance judging (`eval/relevance_probe.py`): text inside each question, "same sense"
   wording, bar 0.75; right texts 0.80+. Request classifier (`eval/ask_probe.py`): 0/36 wrong.
 - Trace one query without Jev: `python eval/explain.py "<query>" --expect quran:2:255`.
+- **Held-out** (`eval/heldout.py`, 38 questions written after f7fed9f, run once on production):
+  described texts right first, of 30: keyword 22, meaning 16, hybrid 23, **Isnad 28**; sayings
+  not in the books answered honestly, of 8: 0, 1, 0, **8**. Misses: Muslim 782 for 783 and
+  al-Tirmidhi 2485 for al-Bukhari 12 (same subject, other wording). Do not tune on this set.
 - Baseline (`eval/baseline.py`, production): described texts right first, of 29: keyword 17,
   meaning 20, hybrid 22, Isnad 29; sayings not in the books answered honestly, of 7: 0, 1, 0, 7.
   In-sample for Isnad (the battery guided the fixes).

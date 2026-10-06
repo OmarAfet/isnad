@@ -85,17 +85,20 @@ Anthropic), directed by the team lead. No earlier version exists: the first comm
 
 Each number is printed by a script in this repository, which also prints the command it ran.
 
-**Against the alternatives a reader has today** (`eval/baseline.py`, production, 2026-10-06), on
-the battery's own questions:
+**Against the alternatives a reader has today**, on a held-out set: 38 questions written after
+the code was frozen and run once on production (`eval/heldout.py`, 2026-10-06), in Arabic, Saudi
+dialect, English, Indonesian, Urdu, French and Russian:
 
 | | Keyword search (BM25, same books) | Meaning search (e5) | Both (Isnad's stage 1) | Isnad |
 |---|---|---|---|---|
-| Described texts: right text first, of 29 | 17 | 20 | 22 | **29** |
-| Sayings that are not sound hadith: honest answer, of 7 | 0 | 1 | 0 | **7** |
+| Described texts: right text first, of 30 | 22 | 16 | 23 | **28** |
+| Sayings that are not sound hadith in these books: honest answer, of 8 | 0 | 1 | 0 | **8** |
 
 A search engine always returns its top hit, so for a saying that is not in the books it shows a
-text that does not contain it. Caveat: these questions also guided Isnad's fixes, so Isnad's
-column is in-sample; the search columns are not tuned to them.
+text that does not contain it; Isnad said "not found" for 6 and gave 2 as "closest, verify before
+citing". Isnad's 2 misses each gave a sound hadith on the same subject in other words (Muslim 782
+for 783; al-Tirmidhi 2485 for al-Bukhari 12). On the battery's own questions, which also guided
+the fixes (in-sample): 29, 17, 20 and 22 of 29; 7, 0, 1 and 0 of 7 (`eval/baseline.py`).
 
 | What | Result | Script |
 |---|---|---|

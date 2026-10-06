@@ -6,7 +6,10 @@ export const metadata: Metadata = {
   description:
     "كيف يبحث إسناد في 40,389 نصًا موثقًا من القرآن الكريم والصحيحين والسنن الأربع، وكيف يختار النص ودرجته.",
   alternates: { canonical: "/method" },
-  openGraph: { title: "كيف يشتغل إسناد", url: "/method" },
+  // A page's openGraph and twitter replace the layout's, not merge with it, so the icon image
+  // is named again here.
+  openGraph: { title: "كيف يشتغل إسناد", url: "/method", images: "/opengraph-image.png" },
+  twitter: { card: "summary", title: "كيف يشتغل إسناد", images: "/twitter-image.png" },
 };
 
 // The specialist page. Technical detail lives here and nowhere else, and every number on it was

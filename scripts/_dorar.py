@@ -42,6 +42,9 @@ def fiqh_url(question):
 # عن الإسلام" (مركز أصول), HTTP 200, with an English page at ?lang=en; islamic-content.com/dictionary
 # is "معجم المصطلحات الشرعية", HTTP 200. The dorar.net encyclopedias answer automated requests with
 # 403 (Cloudflare), so their home pages, as the framework writes them, are linked, never a search.
+# Internet Archive captures (CDX API, read 2026-10-06): dorar.net/aqeeda, /feqhia and /history
+# HTTP 200 in Feb-Mar 2024 (the older /aqadia now redirects); /feqhia/search?q=... HTTP 200 on
+# 2025-08-07, which confirms FIQH_SEARCH above.
 REFER = {
     "objection": "https://dawa.center/file/7937",
     "creed": "https://dorar.net/aqeeda",

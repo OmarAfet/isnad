@@ -153,8 +153,9 @@ Machine has 9 GB RAM: never run two embedding jobs at once.
    إماطة الأذى; this edition numbers it 153.
 4. **Video** ≤ 2 minutes. Warm the site first (one search) to avoid the 8 s cold start.
 5. **Submit** the form; keep the confirmation.
-6. Verify `https://dorar.net/feqhia/search?q=…` on the live site (Cloudflare blocks curl; the
-   pattern comes from the page's own search form in an Internet Archive copy, 2025).
+6. Done: `dorar.net/feqhia/search?q=…` returned HTTP 200 in an Internet Archive capture of
+   2025-08-07; `/aqeeda`, `/feqhia`, `/history` HTTP 200 in 2024 captures (CDX API). A live
+   click from a real browser is still the only first-hand check (Cloudflare blocks scripts).
 7. Optional: host the built index (1.2 GB) as a release asset so the repo runs without a
    rebuild (needs the public repo first); Discord check-in.
 

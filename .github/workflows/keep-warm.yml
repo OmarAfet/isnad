@@ -1,0 +1,20 @@
+# Keep the live demo warm for judges. Vercel stops idle functions after some minutes, and the first
+# search after that waited 7-9 s while the Python service started (measured 2026-10-06: 7.7 and
+# 7.8 s after ~10 idle minutes). One POST to the web tier's warm-up route starts both the web
+# function and the API (it calls /api/health: no Jev call, no cost). GitHub runs schedules on a
+# best-effort basis, often a few minutes late; the home page also warms the API on load.
+name: keep-warm
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+permissions: {}
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Warm the web tier and the API
+        run: |
+          curl -sS -o /dev/null -w "warm: HTTP %{http_code} in %{time_total}s\n" \
+            -X POST --max-time 60 https://isnad-app.vercel.app/api/warm

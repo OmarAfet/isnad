@@ -18,7 +18,7 @@ record and still answers with the Arabic, because the Arabic is the text and the
 only a way of finding it. Stage one is tuned for RECALL, not for first place: Jev decides which
 candidate is right, and it can only choose from what this hands it.
 """
-import json, math, os, re, sqlite3, sys
+import json, os, re, sqlite3, sys
 from collections import Counter, defaultdict
 
 import numpy as np
@@ -550,8 +550,9 @@ class Isnad:
     def lookup(self, query):
         q = (query or "").translate(_DIGITS)
         toks = normalize(q).lower().split()
-        nums = [int(t) for t in toks if t.isdigit()]
-        rest = [t for t in toks if not t.isdigit()]
+        # isdecimal, not isdigit: "²" is a digit to isdigit() and int("²") raises.
+        nums = [int(t) for t in toks if t.isdecimal()]
+        rest = [t for t in toks if not t.isdecimal()]
         if not nums and not rest:
             return None
         self._lookup_tables()

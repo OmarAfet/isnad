@@ -29,7 +29,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 sys.path.insert(0, os.path.join(HERE, "..", "scripts"))
 
-from decide import HIGH, LOW, NO_MATCH, load_key, message_ar   # noqa: E402
+from decide import HIGH, LOW, NO_MATCH, message_ar             # noqa: E402
 from _arabic import normalize                                   # noqa: E402
 from _dorar import fiqh_url, refer_url                          # noqa: E402
 from search import REQUEST_WORDS, light_stem                    # noqa: E402

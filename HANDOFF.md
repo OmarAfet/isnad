@@ -39,6 +39,9 @@ A new session starts here. Gathered challenge context (rules, rubric, Discord an
 | Behaviour tests (14 cases) | `eval/smoke.py` | **14/14 local and production** |
 | Judge battery (76 typed questions) | `eval/battery.py` | **76/76 production** |
 | README: sources log, licences, results, limits, setup | `README.md`, `requirements*.txt` | **done, b07787e** |
+| Translations: Arabic-letter "translations" hidden (502 Bengali); list cards preview translations | `api/app.py`, web | **live, 1b047f8** |
+| Branded tab icon (svg, ico, apple); template files removed | `web/src/app/icon.svg` etc. | **live, 4137434** |
+| Keep-warm ping every 5 min (GitHub Actions) | `.github/workflows/keep-warm.yml` | **inactive until the repo is on GitHub** |
 | Qur'an text vs quran.com, all 6,236 verses | `eval/check_quran_text.py` | **0 split words** |
 
 ## 3. Run, test, deploy
@@ -145,7 +148,7 @@ Machine has 9 GB RAM: never run two embedding jobs at once.
    (Maududi), tr (Golpinarli), ru (Abu Adel), fr (quranenc "Montada"), ta (Baqavi) are not
    KFC, and quranpedia's list could not be read without a browser. Options: show only KFC ones
    (others stay search-only), or keep all with the translator named.
-2. **Public GitHub repo** (`gh` is logged in as OmarAfet; no remote yet). Ask Omar before
+2. **Public GitHub repo** (publishing also turns on the keep-warm workflow) (`gh` is logged in as OmarAfet; no remote yet). Ask Omar before
    publishing. Check first: no secrets in history (keys live in `../.env`), `deploy/` and
    `data/models/` are gitignored.
 3. **Deck** (PptxGenJS). Brand: Readex Pro, #12183F, #6150EA, #2EF2C2, #F2F4FF; template
